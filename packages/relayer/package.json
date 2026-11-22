@@ -1,0 +1,44 @@
+{
+  "name": "@thumbseal/relayer",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "wallet:init": "node dist/init-wallet.js",
+    "deploy:preview": "node dist/deploy-preview.js",
+    "wallet:status": "node dist/wallet-status.js"
+  },
+  "dependencies": {
+    "@midnight-ntwrk/compact-runtime": "0.21.0",
+    "@midnight-ntwrk/ledger-v9": "1.0.2",
+    "@midnight-ntwrk/midnight-js-contracts": "5.0.1",
+    "@midnight-ntwrk/midnight-js-http-client-proof-provider": "5.0.1",
+    "@midnight-ntwrk/midnight-js-indexer-public-data-provider": "5.0.1",
+    "@midnight-ntwrk/midnight-js-level-private-state-provider": "5.0.1",
+    "@midnight-ntwrk/midnight-js-node-zk-config-provider": "5.0.1",
+    "@midnight-ntwrk/midnight-js-types": "5.0.1",
+    "@midnight-ntwrk/midnight-js-utils": "5.0.1",
+    "@midnight-ntwrk/wallet-sdk": "2.0.1",
+    "@midnight-ntwrk/wallet-sdk-address-format": "4.0.1",
+    "@midnight-ntwrk/wallet-sdk-dust-wallet": "5.1.0",
+    "@midnight-ntwrk/wallet-sdk-facade": "5.0.1",
+    "@midnight-ntwrk/wallet-sdk-hd": "4.0.0",
+    "@midnight-ntwrk/wallet-sdk-shielded": "4.0.1",
+    "@midnight-ntwrk/wallet-sdk-unshielded-wallet": "4.0.1",
+    "@thumbseal/contracts": "*",
+    "@thumbseal/sdk": "*",
+    "express": "^5.1.0",
+    "cors": "^2.8.5",
+    "@midnight-ntwrk/compact-js": "3.0.2",
+    "@midnight-ntwrk/wallet-sdk-abstractions": "3.0.0",
+    "rxjs": "^7.8.2"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.1",
+    "@types/node": "^22.14.0",
+    "typescript": "^5.8.3"
+  }
+}
