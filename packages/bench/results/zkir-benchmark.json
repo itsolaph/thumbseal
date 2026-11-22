@@ -1,0 +1,129 @@
+{
+  "measuredAt": "2026-11-22T14:27:52.408Z",
+  "toolchain": {
+    "compactc": "0.36.1",
+    "language": "0.28.0",
+    "compactRuntime": "0.21.0",
+    "proofServer": "midnightntwrk/proof-server:9.0.2",
+    "ledgerEra": "ledger-v9"
+  },
+  "optimizationHighlight": {
+    "beforeBundled3Mode": {
+      "k": 18,
+      "proverKeyMB": 448.05,
+      "proveSeconds": 121.15
+    },
+    "afterGreaseSplit": {
+      "k": 17,
+      "proverKeyMB": 224.04,
+      "proveSeconds": 27.76
+    },
+    "proverKeyReductionPercent": 50
+  },
+  "circuits": [
+    {
+      "contract": "ThumbSealVault",
+      "circuit": "registerPasskey",
+      "zkirVersion": "3.1",
+      "k": 15,
+      "zkirInstructions": 65,
+      "proverKeyBytes": 58727534,
+      "proverKeyMB": 56.01,
+      "verifierKeyBytes": 2745,
+      "keyOps": {
+        "persistent_hash": 2,
+        "transient_hash": 0,
+        "ec_mul": 0,
+        "ec_mul_generator": 1,
+        "assert": 3
+      },
+      "preimageBytes": 403,
+      "proofBytes": 6364,
+      "checkMs": 561,
+      "proveMs": 11933
+    },
+    {
+      "contract": "ThumbSealVault",
+      "circuit": "authorizeAction",
+      "zkirVersion": "3.1",
+      "k": 17,
+      "zkirInstructions": 1451,
+      "proverKeyBytes": 234927562,
+      "proverKeyMB": 224.04,
+      "verifierKeyBytes": 2745,
+      "keyOps": {
+        "persistent_hash": 6,
+        "transient_hash": 16,
+        "ec_mul": 1,
+        "ec_mul_generator": 4,
+        "assert": 67
+      },
+      "preimageBytes": 1082,
+      "proofBytes": 6364,
+      "checkMs": 2425,
+      "proveMs": 27761
+    },
+    {
+      "contract": "ThumbSealVault",
+      "circuit": "authorizeActionGrease",
+      "zkirVersion": "3.1",
+      "k": 18,
+      "zkirInstructions": 1451,
+      "proverKeyBytes": 469808825,
+      "proverKeyMB": 448.04,
+      "verifierKeyBytes": 2745,
+      "keyOps": {
+        "persistent_hash": 6,
+        "transient_hash": 16,
+        "ec_mul": 1,
+        "ec_mul_generator": 4,
+        "assert": 67
+      },
+      "preimageBytes": 1088,
+      "proofBytes": 6364,
+      "checkMs": 3718,
+      "proveMs": 80951
+    },
+    {
+      "contract": "ThumbSealVault",
+      "circuit": "enrollBackupPasskey",
+      "zkirVersion": "3.1",
+      "k": 18,
+      "zkirInstructions": 1498,
+      "proverKeyBytes": 469809780,
+      "proverKeyMB": 448.05,
+      "verifierKeyBytes": 2745,
+      "keyOps": {
+        "persistent_hash": 8,
+        "transient_hash": 16,
+        "ec_mul": 1,
+        "ec_mul_generator": 5,
+        "assert": 70
+      },
+      "checkMs": 8,
+      "proveMs": null,
+      "note": "One-time biometric UV=1 backup device recovery (k=18)"
+    },
+    {
+      "contract": "WalletlessCounter",
+      "circuit": "increment",
+      "zkirVersion": "3.1",
+      "k": 17,
+      "zkirInstructions": 1334,
+      "proverKeyBytes": 234923328,
+      "proverKeyMB": 224.04,
+      "verifierKeyBytes": 2745,
+      "keyOps": {
+        "persistent_hash": 5,
+        "transient_hash": 0,
+        "ec_mul": 1,
+        "ec_mul_generator": 4,
+        "assert": 65
+      },
+      "preimageBytes": 951,
+      "proofBytes": 6364,
+      "checkMs": 5730,
+      "proveMs": 35211
+    }
+  ]
+}

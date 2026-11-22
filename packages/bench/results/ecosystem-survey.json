@@ -1,0 +1,472 @@
+{
+  "measuredAt": "2026-11-22T03:33:22.353Z",
+  "source": "https://api.akindo.io/public/wave-hacks/jaMZjqPOBsLXvjdG/products",
+  "totalProducts": 249,
+  "productsWithPublicGithubUrl": 181,
+  "uniqueGithubReposFetched": 172,
+  "productsWithReachableRepo": 173,
+  "metrics": {
+    "mentionsLaceOrWalletExtension": 104,
+    "mentionsLaceAmongReachableRepos": 104,
+    "mentionsLacePercentOfReachableRepos": 60.1,
+    "mentionsWebAuthnPasskeyOrP256": 6,
+    "mentionsWalletlessOrDustRelayer": 70,
+    "mentionsLedger9OrCompact036": 35
+  },
+  "webauthnMatches": [
+    {
+      "name": "Alethia",
+      "slug": "0xNexuz/aletheia"
+    },
+    {
+      "name": "BACCHIRI!",
+      "slug": "commun-platform/midnight_buildathons_bacchili"
+    },
+    {
+      "name": "Midnight Pool",
+      "slug": "hatif03/midnight-pool"
+    },
+    {
+      "name": "STRICKLE",
+      "slug": "DavidZapataOh/STRICKLE"
+    },
+    {
+      "name": "Private OTC Desk ",
+      "slug": "avishrakshe/Private-OTC-Agent-Desk-On-Midnight-"
+    },
+    {
+      "name": "Unforged",
+      "slug": "bunnyyxtan/unforged"
+    }
+  ],
+  "walletlessMatches": [
+    {
+      "name": "datum",
+      "slug": "seekdaseek/datum"
+    },
+    {
+      "name": "GotIt",
+      "slug": "PhiBao/gotit"
+    },
+    {
+      "name": "EduProof",
+      "slug": "TranHuyHiep/EduProof"
+    },
+    {
+      "name": "Candor",
+      "slug": "UnityNodes/Candor"
+    },
+    {
+      "name": "Alethia",
+      "slug": "0xNexuz/aletheia"
+    },
+    {
+      "name": "DarkStake",
+      "slug": "JohnboscoE/Darkstake"
+    },
+    {
+      "name": "Vero",
+      "slug": "rmarquesc/vero-demo"
+    },
+    {
+      "name": "TrueMile",
+      "slug": "milesdevx/TrueMile"
+    },
+    {
+      "name": "kymider",
+      "slug": "Turnless/kymider"
+    },
+    {
+      "name": "VulnSeal",
+      "slug": "tang-vu/vulnseal"
+    },
+    {
+      "name": "Nocturne",
+      "slug": "0xshubhs/Nocturne"
+    },
+    {
+      "name": "BACCHIRI!",
+      "slug": "commun-platform/midnight_buildathons_bacchili"
+    },
+    {
+      "name": "Amana",
+      "slug": "farouk-allani/amana"
+    },
+    {
+      "name": "Blindside",
+      "slug": "let-the-dreamers-rise/blindside"
+    },
+    {
+      "name": "Midnight Casino",
+      "slug": "AmaanSayyad/Midnight-Casino"
+    },
+    {
+      "name": "Midnight Pool",
+      "slug": "hatif03/midnight-pool"
+    },
+    {
+      "name": "Stock & Foil",
+      "slug": "RaYYeR220/stock-and-foil"
+    },
+    {
+      "name": "Thirdmark",
+      "slug": "Jennycruzy/Thirdmark"
+    },
+    {
+      "name": "VeilWolf",
+      "slug": "JamesVictor-O/VeilWolf"
+    },
+    {
+      "name": "Night Desk",
+      "slug": "welson-ai/night-desk"
+    },
+    {
+      "name": "private-payroll-splits",
+      "slug": "oluwabusayomi103-cmd/private-payroll-splits"
+    },
+    {
+      "name": "OnePledge",
+      "slug": "OoJae/onepledge"
+    },
+    {
+      "name": "Understory",
+      "slug": "yukitran03/understory"
+    },
+    {
+      "name": "QuietPatch",
+      "slug": "ShalyX/quietpatch"
+    },
+    {
+      "name": "MANO",
+      "slug": "AC1706-67/mano-midnight"
+    },
+    {
+      "name": "VeilClaim",
+      "slug": "0xMegie/VeilClaim-"
+    },
+    {
+      "name": "Equilux",
+      "slug": "AustinChris1/Equilux"
+    },
+    {
+      "name": "Nominee.World",
+      "slug": "vwakesahu/nominee"
+    },
+    {
+      "name": "ZKAuction",
+      "slug": "shivam-s-dev/zkauction-midnight"
+    },
+    {
+      "name": "NightJar",
+      "slug": "ayushsingh82/Nightjar"
+    },
+    {
+      "name": "VotePriv",
+      "slug": "mdlog/votepriv"
+    },
+    {
+      "name": "ProofRelief",
+      "slug": "IbrahimIjai/proof-relief"
+    },
+    {
+      "name": "Veil-Vault",
+      "slug": "ArtaXerxes-oss/Veil-Vault"
+    },
+    {
+      "name": "EquiVault",
+      "slug": "JayCul/equivault"
+    },
+    {
+      "name": "midnight.vote",
+      "slug": "tomasgarro/midnight-vote"
+    },
+    {
+      "name": "slopstream",
+      "slug": "sneldao/slopstream"
+    },
+    {
+      "name": "AVAL",
+      "slug": "Leihyn/aval"
+    },
+    {
+      "name": "Aegis_",
+      "slug": "jayteemoney/aegis"
+    },
+    {
+      "name": "Absentia",
+      "slug": "Jagadeeshftw/Absentia"
+    },
+    {
+      "name": "Shade 402",
+      "slug": "mhizer-fatai/shade402"
+    },
+    {
+      "name": "Mandate",
+      "slug": "tomiin/midnight-mandate"
+    },
+    {
+      "name": "Sealed Pick",
+      "slug": "luoy16002-svg/sealed-pick"
+    },
+    {
+      "name": "Private OTC Desk ",
+      "slug": "avishrakshe/Private-OTC-Agent-Desk-On-Midnight-"
+    },
+    {
+      "name": "Tally",
+      "slug": "Preciousbas/tally"
+    },
+    {
+      "name": "Lixi",
+      "slug": "hms1499/lixi-midnight"
+    },
+    {
+      "name": "NightPoll",
+      "slug": "hycorange/nightpoll"
+    },
+    {
+      "name": "Carbon Seal",
+      "slug": "uok825/carbonseal"
+    },
+    {
+      "name": "DuskPad",
+      "slug": "AshThunder/duskpad"
+    },
+    {
+      "name": "AgePass",
+      "slug": "Emediong-Etuk/AgePass"
+    },
+    {
+      "name": "Pay Parity",
+      "slug": "56steve/pay-parity"
+    },
+    {
+      "name": "EverList",
+      "slug": "everlist-hq/everlist-open-core"
+    },
+    {
+      "name": "Ampoule",
+      "slug": "Sanchay117/ampoule"
+    },
+    {
+      "name": "Undying Ledger",
+      "slug": "nice-bills/undying-ledger"
+    },
+    {
+      "name": "checkpoint",
+      "slug": "zinobase/checkpoint"
+    },
+    {
+      "name": "TrueReport",
+      "slug": "Yonkoo11/truereport"
+    },
+    {
+      "name": "Whistle",
+      "slug": "Im-2/whistle-midnight"
+    },
+    {
+      "name": "Senyap",
+      "slug": "scientivan/senyap"
+    },
+    {
+      "name": "Nightschool",
+      "slug": "Anuoluwapo25/Nightschool"
+    },
+    {
+      "name": "ZKlinic",
+      "slug": "fahmmin/zklinic-midnight"
+    },
+    {
+      "name": "Chaintrace",
+      "slug": "GuTS805/Chaintrace"
+    },
+    {
+      "name": "Lootseal",
+      "slug": "SuryaXyz-art/Lootseal"
+    },
+    {
+      "name": "CloakTix",
+      "slug": "peejay0786-star/cloaktix"
+    },
+    {
+      "name": "StayProof",
+      "slug": "davidjsourcing/stayproof"
+    },
+    {
+      "name": "The Hall",
+      "slug": "Beo-Halfhand/the-hall"
+    },
+    {
+      "name": "Lotproof",
+      "slug": "kasbsquall/lotproof"
+    },
+    {
+      "name": "Sealed Disclosure",
+      "slug": "kriptmwan/sealed-disclosure"
+    },
+    {
+      "name": "Hushpoll",
+      "slug": "Class-now/hushpoll"
+    },
+    {
+      "name": "Kola ID",
+      "slug": "mbanyadev/kola-id"
+    },
+    {
+      "name": "KeeProxy",
+      "slug": "SCARPxVeNOM/keeproxy"
+    },
+    {
+      "name": "CorvusZK",
+      "slug": "CorvusZK-1/CorvusZK"
+    }
+  ],
+  "ledger9Matches": [
+    {
+      "name": "EduProof",
+      "slug": "TranHuyHiep/EduProof"
+    },
+    {
+      "name": "DarkStake",
+      "slug": "JohnboscoE/Darkstake"
+    },
+    {
+      "name": "Nocturne",
+      "slug": "0xshubhs/Nocturne"
+    },
+    {
+      "name": "Freeboard",
+      "slug": "Sammy949/freeboard"
+    },
+    {
+      "name": "GYOTAK",
+      "slug": "takutakuhuahin/gyotak-midnight"
+    },
+    {
+      "name": "Stock & Foil",
+      "slug": "RaYYeR220/stock-and-foil"
+    },
+    {
+      "name": "OnePledge",
+      "slug": "OoJae/onepledge"
+    },
+    {
+      "name": "Veil-Vault",
+      "slug": "ArtaXerxes-oss/Veil-Vault"
+    },
+    {
+      "name": "midnight.vote",
+      "slug": "tomasgarro/midnight-vote"
+    },
+    {
+      "name": "AVAL",
+      "slug": "Leihyn/aval"
+    },
+    {
+      "name": "Phrim",
+      "slug": "Vamp-Labs/Phrim"
+    },
+    {
+      "name": "Anonimus",
+      "slug": "Abd00lmalik/anonimus"
+    },
+    {
+      "name": "Mandate",
+      "slug": "tomiin/midnight-mandate"
+    },
+    {
+      "name": "Tell",
+      "slug": "RohanGlitched/tell"
+    },
+    {
+      "name": "AgePass",
+      "slug": "Emediong-Etuk/AgePass"
+    },
+    {
+      "name": "RaiseVeil",
+      "slug": "biruk-ay/raiseveil"
+    },
+    {
+      "name": "Undying Ledger",
+      "slug": "nice-bills/undying-ledger"
+    },
+    {
+      "name": "Refacton QuestAttestation",
+      "slug": "GIZMON-frapetino/refacton_midnight"
+    },
+    {
+      "name": "Private Poll",
+      "slug": "anpratama/midnight-private-poll"
+    },
+    {
+      "name": "ZKlinic",
+      "slug": "fahmmin/zklinic-midnight"
+    },
+    {
+      "name": "Unforged",
+      "slug": "bunnyyxtan/unforged"
+    },
+    {
+      "name": "AEGIS",
+      "slug": "Leyenda95/aegisProject"
+    },
+    {
+      "name": "Disclosure Ledger",
+      "slug": "tidelit4/disclosure-ledger"
+    },
+    {
+      "name": "CloakTix",
+      "slug": "peejay0786-star/cloaktix"
+    },
+    {
+      "name": "StayProof",
+      "slug": "davidjsourcing/stayproof"
+    },
+    {
+      "name": "The Hall",
+      "slug": "Beo-Halfhand/the-hall"
+    },
+    {
+      "name": "Lotproof",
+      "slug": "kasbsquall/lotproof"
+    },
+    {
+      "name": "DPO2U Travel Rule Gate",
+      "slug": "fredericosanntana/dpo2u-midnight"
+    },
+    {
+      "name": "Sealed Disclosure",
+      "slug": "kriptmwan/sealed-disclosure"
+    },
+    {
+      "name": "Hushpoll",
+      "slug": "Class-now/hushpoll"
+    },
+    {
+      "name": "Umbra",
+      "slug": "Imdavyking/umbra-otc-midnight"
+    },
+    {
+      "name": "Murmur",
+      "slug": "emilpz320-a11y/murmur-midnight"
+    },
+    {
+      "name": "KeeProxy",
+      "slug": "SCARPxVeNOM/keeproxy"
+    },
+    {
+      "name": "LDN Private Quest Receipts",
+      "slug": "luxedigitalnest/ldn-midnight-private-quest-receipts"
+    },
+    {
+      "name": "CorvusZK",
+      "slug": "CorvusZK-1/CorvusZK"
+    }
+  ],
+  "methodology": [
+    "Fetched every public product entry from the AKINDO Build Privacy-First Apps on Midnight WaveHack API.",
+    "Extracted GitHub owner/repo slugs from githubRepositoryName and deliverableUrl fields.",
+    "Fetched public README.md and package.json (main/master) via raw.githubusercontent.com.",
+    "Scanned combined metadata + README + package.json with deterministic regexes; percentages are reported strictly over reachable public repositories (no extrapolation for private or unlinked repos)."
+  ]
+}

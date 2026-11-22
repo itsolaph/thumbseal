@@ -1,0 +1,18 @@
+{
+  "name": "@thumbseal/bench",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "bench:zkir": "node src/bench-zkir.mjs",
+    "bench:ecosystem": "node src/survey-ecosystem.mjs"
+  },
+  "dependencies": {
+    "@midnight-ntwrk/compact-runtime": "0.21.0",
+    "@midnight-ntwrk/ledger-v9": "1.0.2",
+    "@midnight-ntwrk/midnight-js-http-client-proof-provider": "5.0.1",
+    "@midnight-ntwrk/midnight-js-node-zk-config-provider": "5.0.1",
+    "@thumbseal/contracts": "*",
+    "@thumbseal/sdk": "*"
+  }
+}
