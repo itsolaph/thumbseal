@@ -204,8 +204,8 @@ function parseAssertion(raw: SerializedAssertion): WebAuthnAssertionWitness {
   if (!Array.isArray(raw.challengeBytes) || raw.challengeBytes.length !== 32) {
     throw new Error('Invalid challengeBytes: expected 32 uint8 values');
   }
-  if (!Array.isArray(raw.challengeSextets) || raw.challengeSextets.length !== 42) {
-    throw new Error('Invalid challengeSextets: expected 42 uint6 values');
+  if (!Array.isArray(raw.challengeSextets) || raw.challengeSextets.length !== 43) {
+    throw new Error('Invalid challengeSextets: expected 43 uint6 values');
   }
   const tail4 = Number(raw.challengeTail4);
   if (!Number.isInteger(tail4) || tail4 < 0 || tail4 > 15) {
