@@ -26,7 +26,7 @@ export const INITIAL_CIRCUIT_ROWS: CircuitBenchRow[] = [
     zkirInstructions: 65,
     proverKeyMB: 56.01,
     verifierKeyBytes: 2745,
-    proveLabel: '9.57 s warm (6,364 B proof)',
+    proveLabel: '11.93 s (6,364 B proof)',
   },
   {
     contract: 'ThumbSealVault',
@@ -35,7 +35,7 @@ export const INITIAL_CIRCUIT_ROWS: CircuitBenchRow[] = [
     zkirInstructions: 1451,
     proverKeyMB: 224.04,
     verifierKeyBytes: 2745,
-    proveLabel: '33.52 s warm (3.6x faster, 50% smaller key)',
+    proveLabel: '27.76 s (1.9x faster in paired run, 50% smaller key)',
     highlight: true,
   },
   {
@@ -45,7 +45,7 @@ export const INITIAL_CIRCUIT_ROWS: CircuitBenchRow[] = [
     zkirInstructions: 1451,
     proverKeyMB: 448.04,
     verifierKeyBytes: 2745,
-    proveLabel: '121.15 s (isolated Chrome 20% GREASE)',
+    proveLabel: '80.95 s (isolated Chrome 20% GREASE)',
   },
   {
     contract: 'ThumbSealVault',
@@ -63,7 +63,7 @@ export const INITIAL_CIRCUIT_ROWS: CircuitBenchRow[] = [
     zkirInstructions: 1334,
     proverKeyMB: 224.04,
     verifierKeyBytes: 2745,
-    proveLabel: '33.23 s warm (15-line migration)',
+    proveLabel: '35.21 s (15-line migration)',
   },
 ];
 

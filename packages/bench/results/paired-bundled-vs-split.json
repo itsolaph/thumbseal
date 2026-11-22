@@ -1,0 +1,32 @@
+{
+  "measuredAt": "2026-11-22T14:45:15.000Z",
+  "method": "Alternating old/new proves of authorizeAction (standard clientDataJSON) on one proof-server:9.0.2 instance",
+  "baseline": {
+    "commit": "87e2466",
+    "k": 18,
+    "proverKeyMB": 448.05,
+    "proveMs": [
+      108704,
+      85490,
+      74221
+    ],
+    "medianMs": 85490
+  },
+  "split": {
+    "k": 17,
+    "proverKeyMB": 224.04,
+    "proveMs": [
+      58329,
+      44215,
+      39206
+    ],
+    "medianMs": 44215
+  },
+  "pairRatios": [
+    1.86,
+    1.93,
+    1.89
+  ],
+  "medianSpeedup": 1.93,
+  "note": "Shared 8-vCPU host with other workloads; absolute times move with load, the paired ratio stays at 1.86-1.93x."
+}

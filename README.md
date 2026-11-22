@@ -92,20 +92,20 @@ export circuit increment(scopeId: Bytes<32>): [] {
 
 Chromium randomly appends a 111-byte GREASE property (131-byte combined `crossOrigin` + GREASE suffix) (`"other_keys_can_be_added_here":"do not compare clientDataJSON against a template. See https://goo.gl/yabPex"`) to ~20% of `webauthn.get` assertions (`content/browser/webauth/client_data_json.cc`).
 
-Because Compact evaluates both branches of conditional `persistentHash` calls inside a circuit, bundling standard W3C and GREASE `clientDataJSON` templates inside a single circuit pushed `authorizeAction` past the Halo2 `2^17` row boundary into **`k=18` (448.05 MB prover key, ~121s prove time)**.
+Because Compact evaluates both branches of conditional `persistentHash` calls inside a circuit, bundling standard W3C and GREASE `clientDataJSON` templates inside a single circuit pushed `authorizeAction` past the Halo2 `2^17` row boundary into **`k=18` (448.05 MB prover key)**.
 
-Splitting Chromium's 20% GREASE path into a dedicated circuit (`authorizeActionGrease`) that shares the exact same `HistoricMerkleTree<16>` and `usedNullifiers` set â€” while `@thumbseal/sdk` inspects `clientDataJSON` and routes automatically â€” dropped the hot-path `authorizeAction` and `WalletlessCounter.increment` circuits back to **`k=17` (224.04 MB prover key, 50% smaller, 3.6x faster warm proving: 33.52 s vs 121.15 s)**.
+Splitting Chromium's 20% GREASE path into a dedicated circuit (`authorizeActionGrease`) that shares the exact same `HistoricMerkleTree<16>` and `usedNullifiers` set â€” while `@thumbseal/sdk` inspects `clientDataJSON` and routes automatically â€” dropped the hot-path `authorizeAction` and `WalletlessCounter.increment` circuits back to **`k=17` (224.04 MB prover key, 50% smaller)**. In a paired benchmark against the bundled circuit (commit `87e2466`, three alternating runs on one proof server) proving got **1.9x faster: median 85.5 s → 44.2 s** ([`paired-bundled-vs-split.json`](packages/bench/results/paired-bundled-vs-split.json)).
 
 
-| Contract | Circuit | k | ZKIR Ops | Prover Key | Verifier Key | Proof Size | Warm Halo2 Prove |
+| Contract | Circuit | k | ZKIR Ops | Prover Key | Verifier Key | Proof Size | Halo2 Prove (one run) |
 |---|---|---:|---:|---:|---:|---:|---:|
-| `ThumbSealVault` | `registerPasskey` | `k=15` | 65 | 56.01 MB | 2,745 B | 6,364 B | **9.57 s** |
-| `ThumbSealVault` | `authorizeAction` | `k=17` | 1,451 | 224.04 MB | 2,745 B | 6,364 B | **33.52 s** |
-| `ThumbSealVault` | `authorizeActionGrease` | `k=18` | 1,451 | 448.04 MB | 2,745 B | 6,364 B | **121.15 s** |
+| `ThumbSealVault` | `registerPasskey` | `k=15` | 65 | 56.01 MB | 2,745 B | 6,364 B | **11.93 s** |
+| `ThumbSealVault` | `authorizeAction` | `k=17` | 1,451 | 224.04 MB | 2,745 B | 6,364 B | **27.76 s** |
+| `ThumbSealVault` | `authorizeActionGrease` | `k=18` | 1,451 | 448.04 MB | 2,745 B | 6,364 B | **80.95 s** |
 | `ThumbSealVault` | `enrollBackupPasskey` | `k=18` | 1,498 | 448.05 MB | 2,745 B | 6,364 B | k=18 (one-time) |
-| `WalletlessCounter` | `increment` | `k=17` | 1,334 | 224.04 MB | 2,745 B | 6,364 B | **33.23 s** |
+| `WalletlessCounter` | `increment` | `k=17` | 1,334 | 224.04 MB | 2,745 B | 6,364 B | **35.21 s** |
 
-See [`packages/bench/results/zkir-benchmark.md`](packages/bench/results/zkir-benchmark.md) and [`packages/bench/results/ecosystem-survey.md`](packages/bench/results/ecosystem-survey.md) for raw measured data and reproduction scripts.
+See [`packages/bench/results/zkir-benchmark.md`](packages/bench/results/zkir-benchmark.md) and [`packages/bench/results/ecosystem-survey.md`](packages/bench/results/ecosystem-survey.md) for raw measured data and reproduction scripts. Absolute prove times move with host load (same 8-vCPU shared box); compare circuits within one run.
 
 ---
 

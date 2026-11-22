@@ -10,15 +10,15 @@
   "optimizationHighlight": {
     "beforeBundled3Mode": {
       "k": 18,
-      "proverKeyMB": 448.05,
-      "proveSeconds": 121.15
+      "proverKeyMB": 448.05
     },
     "afterGreaseSplit": {
       "k": 17,
-      "proverKeyMB": 224.04,
-      "proveSeconds": 27.76
+      "proverKeyMB": 224.04
     },
-    "proverKeyReductionPercent": 50
+    "proverKeyReductionPercent": 50,
+    "pairedSpeedup": 1.93,
+    "pairedSource": "results/paired-bundled-vs-split.json"
   },
   "circuits": [
     {
@@ -100,7 +100,7 @@
         "ec_mul_generator": 5,
         "assert": 70
       },
-      "checkMs": 8,
+      "checkMs": null,
       "proveMs": null,
       "note": "One-time biometric UV=1 backup device recovery (k=18)"
     },

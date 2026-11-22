@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "bench:zkir": "node src/bench-zkir.mjs",
-    "bench:ecosystem": "node src/survey-ecosystem.mjs"
+    "bench:ecosystem": "node src/survey-ecosystem.mjs",
+    "bench:paired": "node src/bench-paired.mjs",
+    "baseline:compile": "mkdir -p .baseline && git show 87e2466:packages/contracts/src/PasskeyAuth.compact > .baseline/PasskeyAuth.compact && git show 87e2466:packages/contracts/src/ThumbSealVault.compact > .baseline/ThumbSealVault.compact && compactc .baseline/ThumbSealVault.compact .baseline/managed/thumbseal-vault"
   },
   "dependencies": {
     "@midnight-ntwrk/compact-runtime": "0.21.0",

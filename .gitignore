@@ -10,3 +10,4 @@ coverage/
 *.prover
 .leveldb/
 midnight-level-db/
+packages/bench/.baseline/

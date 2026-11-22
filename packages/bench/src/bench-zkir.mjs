@@ -218,9 +218,9 @@ async function main() {
       contract: 'ThumbSealVault',
       circuit: 'authorizeActionGrease',
       ...greaseStats,
-      checkMs: 8,
-      proveMs: 121152,
-      note: 'Measured on proof-server:9.0.2 (121.15s); isolated k=18 Chrome 20% GREASE path',
+      checkMs: null,
+      proveMs: null,
+      note: 'Not proved in this run; set BENCH_INCLUDE_K18=1 (needs ~10 GB free RAM for the proof server)',
     });
   }
 
@@ -230,7 +230,7 @@ async function main() {
     contract: 'ThumbSealVault',
     circuit: 'enrollBackupPasskey',
     ...bkpStats,
-    checkMs: 8,
+    checkMs: null,
     proveMs: null,
     note: 'One-time biometric UV=1 backup device recovery (k=18)',
   });
@@ -268,6 +268,16 @@ async function main() {
     ...(await proveCircuitCall(counterProver, cntRes.context.callProofDataTrace, 'increment')),
   });
 
+  let paired = null;
+  try {
+    paired = JSON.parse(await fs.readFile(path.join(RESULTS_DIR, 'paired-bundled-vs-split.json'), 'utf8'));
+  } catch {
+    paired = null;
+  }
+  const speedupText = paired
+    ? `${paired.medianSpeedup}x faster proving (paired run vs commit ${paired.baseline.commit}, median ${(paired.baseline.medianMs / 1000).toFixed(1)} s -> ${(paired.split.medianMs / 1000).toFixed(1)} s)`
+    : 'run `bench:paired` for a same-host speedup figure';
+
   const report = {
     measuredAt,
     toolchain: {
@@ -278,9 +288,11 @@ async function main() {
       ledgerEra: 'ledger-v9',
     },
     optimizationHighlight: {
-      beforeBundled3Mode: { k: 18, proverKeyMB: 448.05, proveSeconds: 121.15 },
-      afterGreaseSplit: { k: 17, proverKeyMB: 224.04, proveSeconds: Number((benchmarks[1].proveMs / 1000).toFixed(2)) },
+      beforeBundled3Mode: { k: 18, proverKeyMB: 448.05 },
+      afterGreaseSplit: { k: 17, proverKeyMB: 224.04 },
       proverKeyReductionPercent: 50.0,
+      pairedSpeedup: paired ? paired.medianSpeedup : null,
+      pairedSource: paired ? 'results/paired-bundled-vs-split.json' : null,
     },
     circuits: benchmarks,
   };
@@ -293,16 +305,17 @@ async function main() {
     '',
     `- **Measured at:** ${measuredAt}`,
     '- **Toolchain:** `compactc 0.36.1` (`language 0.28.0`, `compact-runtime 0.21.0`, `midnightntwrk/proof-server:9.0.2`)',
-    `- **Optimization win:** Splitting Chromium's 20% GREASE suffix into \`authorizeActionGrease\` cut the hot-path \`authorizeAction\` circuit from **k=18 (448.05 MB, 121.15 s)** to **k=17 (224.04 MB, ${(benchmarks[1].proveMs / 1000).toFixed(2)} s)** â€” **50% smaller prover key & ${(121.15 / (benchmarks[1].proveMs / 1000)).toFixed(1)}x faster warm proving**.`,
+    `- **Optimization win:** Splitting Chromium's 20% GREASE suffix into \`authorizeActionGrease\` cut the hot-path \`authorizeAction\` circuit from **k=18 (448.05 MB prover key)** to **k=17 (224.04 MB)**: **50% smaller prover key, ${speedupText}**.`,
+    '- **Note:** single-run prove times below depend on host load; compare circuits within one run, not across runs.',
     '',
     '| Contract | Circuit | k | ZKIR Ops | Prover Key | Verifier Key | Check | Halo2 Prove |',
     '|---|---|---:|---:|---:|---:|---:|---:|',
     ...benchmarks.map((b) => {
-      const proveStr = b.proveMs ? `**${(b.proveMs / 1000).toFixed(2)} s**` : 'k=18 (optional)';
+      const proveStr = b.proveMs ? `**${(b.proveMs / 1000).toFixed(2)} s**` : 'not proved';
       return `| ${b.contract} | \`${b.circuit}\` | k=${b.k} | ${b.zkirInstructions} | ${b.proverKeyMB} MB | ${b.verifierKeyBytes} B | ${b.checkMs ?? '-'} ms | ${proveStr} |`;
     }),
     '',
-    'Reproduce: `npm --workspace @thumbseal/bench run bench:zkir`',
+    'Reproduce: `BENCH_INCLUDE_K18=1 npm --workspace @thumbseal/bench run bench:zkir`; speedup: `npm --workspace @thumbseal/bench run baseline:compile && npm --workspace @thumbseal/bench run bench:paired`',
     '',
   ].join('\n');
   await fs.writeFile(path.join(RESULTS_DIR, 'zkir-benchmark.md'), md, 'utf8');
