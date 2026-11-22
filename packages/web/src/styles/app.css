@@ -1000,6 +1000,11 @@
   .mapping-mobile .kv-val {
     text-align: left;
   }
+  .mapping-mobile .kv-line--crossing {
+    border-radius: 0;
+    border-inline: none;
+    border-block: var(--rule-hair) solid var(--color-graphite-glyph-2);
+  }
 }
 
 @media (max-width: 40rem) {
