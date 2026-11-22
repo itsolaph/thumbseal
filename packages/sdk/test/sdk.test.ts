@@ -23,6 +23,8 @@ import {
   toBase64Url,
   utf8ToBytes,
   VirtualPasskeyAuthenticator,
+  fromBase64Url,
+  assertValidP256Point,
 } from '../src/index.js';
 import { p256 } from '@noble/curves/nist.js';
 
@@ -173,5 +175,21 @@ describe('@thumbseal/sdk crypto & WebAuthn primitives', () => {
     expect(restored.publicKey.x).toBe(auth.credential.publicKey.x);
     expect(restored.publicKey.y).toBe(auth.credential.publicKey.y);
     expect(toBase64Url(restored.salt)).toBe(toBase64Url(auth.credential.salt));
+  });
+});
+
+describe('Security hardening (canonical base64url + P-256 point check)', () => {
+  it('rejects non-canonical base64url trailing bits and invalid lengths', () => {
+    // 32-byte all-zero canonical base64url ends in 'A' (4 zero bits + 2 zero padding bits).
+    // Replacing final 'A' with 'B' sets non-zero trailing bit 0 -> must reject.
+    const valid = 'A'.repeat(43);
+    expect(fromBase64Url(valid).length).toBe(32);
+    expect(() => fromBase64Url('A'.repeat(42) + 'B')).toThrow(/Non-canonical/i);
+    expect(() => fromBase64Url('AAAAA')).toThrow(/Invalid base64url length/i);
+  });
+
+  it('rejects identity and off-curve P-256 public keys', () => {
+    expect(() => assertValidP256Point({ x: 0n, y: 0n, identity: true })).toThrow(/infinity/i);
+    expect(() => assertValidP256Point({ x: 1n, y: 2n, identity: false })).toThrow();
   });
 });

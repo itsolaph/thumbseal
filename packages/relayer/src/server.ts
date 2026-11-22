@@ -30,10 +30,12 @@ import {
 } from '@midnight-ntwrk/compact-runtime';
 import { CompiledContract } from '@midnight-ntwrk/compact-js';
 import { findDeployedContract } from '@midnight-ntwrk/midnight-js-contracts';
-import { proofDataIntoSerializedPreimage } from '@midnight-ntwrk/ledger-v9';
+import * as ledgerV9 from '@midnight-ntwrk/ledger-v9';
+const { proofDataIntoSerializedPreimage } = ledgerV9;
 import { httpClientProvingProvider } from '@midnight-ntwrk/midnight-js-http-client-proof-provider';
 import { NodeZkConfigProvider } from '@midnight-ntwrk/midnight-js-node-zk-config-provider';
 import {
+  assertValidP256Point,
   bytesToHex,
   computeRpIdHash,
   createThumbSealWitnesses,
@@ -71,18 +73,50 @@ const ALLOWED_ORIGINS = new Set([
   'http://localhost:4173',
 ]);
 
-// Simple sliding-window per-IP rate limiter (30 requests / 5 minutes)
+// Tighter sliding-window per-IP proving & sponsor quotas + daily global cap
+const RELAYER_API_KEY = process.env.RELAYER_API_KEY || '';
+const MAX_PROOFS_PER_IP_15M = Number(process.env.MAX_PROOFS_PER_IP_15M || 10);
+const MAX_DAILY_SPONSORED_TX = Number(process.env.MAX_DAILY_SPONSORED_TX || 50);
+const ALLOWED_ENTRY_POINTS = new Set([
+  'registerPasskey',
+  'authorizeAction',
+  'authorizeActionGrease',
+  'enrollBackupPasskey',
+  'increment',
+]);
+
 const ipBuckets = new Map<string, number[]>();
-function checkRateLimit(ip: string): boolean {
+const activeIpJobs = new Map<string, number>();
+let dailySponsorCount = 0;
+let dailySponsorDay = new Date().toISOString().slice(0, 10);
+
+function checkApiKey(req: Request): boolean {
+  if (!RELAYER_API_KEY) return true;
+  const provided = String(req.headers['x-relayer-key'] || '');
+  if (!provided || provided.length !== RELAYER_API_KEY.length) return false;
+  return crypto.timingSafeEqual(Buffer.from(provided), Buffer.from(RELAYER_API_KEY));
+}
+
+function checkRateLimit(ip: string, limit = MAX_PROOFS_PER_IP_15M, windowMs = 15 * 60 * 1000): boolean {
   const now = Date.now();
-  const windowMs = 5 * 60 * 1000;
   const recent = (ipBuckets.get(ip) ?? []).filter((t) => now - t < windowMs);
-  if (recent.length >= 30) {
+  if (recent.length >= limit) {
     ipBuckets.set(ip, recent);
     return false;
   }
   recent.push(now);
   ipBuckets.set(ip, recent);
+  return true;
+}
+
+function consumeDailySponsorBudget(): boolean {
+  const today = new Date().toISOString().slice(0, 10);
+  if (today !== dailySponsorDay) {
+    dailySponsorDay = today;
+    dailySponsorCount = 0;
+  }
+  if (dailySponsorCount >= MAX_DAILY_SPONSORED_TX) return false;
+  dailySponsorCount++;
   return true;
 }
 
@@ -150,11 +184,13 @@ function parsePubKey(raw: any): Secp256r1Point {
   if (!raw || typeof raw.x !== 'string' || typeof raw.y !== 'string') {
     throw new Error('Invalid publicKey: expected { x: hex, y: hex, identity?: boolean }');
   }
-  return {
+  const pt: Secp256r1Point = {
     x: parseHexBigInt(raw.x, 'publicKey.x'),
     y: parseHexBigInt(raw.y, 'publicKey.y'),
     identity: Boolean(raw.identity),
   };
+  assertValidP256Point(pt);
+  return pt;
 }
 
 function parseAssertion(raw: SerializedAssertion): WebAuthnAssertionWitness {
@@ -588,6 +624,60 @@ class RelayerEngine {
     });
   }
 
+  private getAllowedSponsorContracts(): Set<string> {
+    const allowed = new Set<string>();
+    if (this.deployment?.vaultAddress) allowed.add(this.deployment.vaultAddress.toLowerCase());
+    if (this.deployment?.counterAddress) allowed.add(this.deployment.counterAddress.toLowerCase());
+    for (const extra of (process.env.THUMBSEAL_ALLOWED_CONTRACTS || '').split(',')) {
+      const trimmed = extra.trim().toLowerCase();
+      if (trimmed) allowed.add(trimmed);
+    }
+    return allowed;
+  }
+
+  private assertSponsorPolicy(rawTxBytes: Uint8Array): void {
+    const allowedContracts = this.getAllowedSponsorContracts();
+    if (allowedContracts.size === 0) {
+      throw new Error('No allowlisted ThumbSeal contracts configured for DUST sponsorship');
+    }
+    const tx = ledgerV9.Transaction.deserialize('signature', 'proof', 'pre-binding', rawTxBytes) as any;
+    if (tx.guaranteedOffer || tx.fallibleOffer) {
+      throw new Error('DUST sponsor rejects transactions carrying shielded value offers');
+    }
+    const intentsMap = tx.intents;
+    if (!intentsMap || intentsMap.size === 0) {
+      throw new Error('DUST sponsor requires at least one contract-call intent');
+    }
+    let callCount = 0;
+    for (const intent of intentsMap.values()) {
+      if (intent.has_contract_deployments) {
+        throw new Error('DUST sponsor does not sponsor arbitrary contract deployments');
+      }
+      if (intent.guaranteedUnshieldedOffer || intent.fallibleUnshieldedOffer) {
+        throw new Error('DUST sponsor rejects unshielded token transfer offers');
+      }
+      const actions = intent.actions ?? [];
+      if (!Array.isArray(actions) || actions.length === 0) {
+        throw new Error('Intent contains no actions');
+      }
+      for (const act of actions) {
+        if (!act || typeof act.address !== 'string' || typeof act.entryPoint !== 'string') {
+          throw new Error('DUST sponsor permits ContractCall actions only');
+        }
+        if (!allowedContracts.has(act.address.toLowerCase())) {
+          throw new Error(`Contract address ${act.address} is not allowlisted for DUST sponsorship`);
+        }
+        if (!ALLOWED_ENTRY_POINTS.has(act.entryPoint)) {
+          throw new Error(`Entry point ${act.entryPoint} is not allowlisted for DUST sponsorship`);
+        }
+        callCount++;
+      }
+    }
+    if (callCount === 0) {
+      throw new Error('No allowlisted ThumbSeal contract call found in transaction');
+    }
+  }
+
   async sponsorUnboundTx(unboundTxHex: string): Promise<{ txId: string }> {
     if (!this.wallet) {
       throw new Error('Live Midnight Preview wallet is not funded/connected for DUST sponsorship');
@@ -597,6 +687,10 @@ class RelayerEngine {
     }
     const clean = unboundTxHex.startsWith('0x') ? unboundTxHex.slice(2) : unboundTxHex;
     const raw = hexToBytes(clean);
+    this.assertSponsorPolicy(raw);
+    if (!consumeDailySponsorBudget()) {
+      throw new Error('Daily DUST sponsorship budget reached');
+    }
     const handle = this.wallet.facade.adoptTransaction(raw, 'Unbound');
     const recipe = await this.wallet.facade.balanceUnboundTransaction(handle, {
       ttl: new Date(Date.now() + 20 * 60 * 1000),
@@ -685,9 +779,17 @@ async function main() {
   });
 
   app.post('/api/relay/register', async (req: Request, res: Response) => {
+    if (!checkApiKey(req)) {
+      res.status(401).json({ ok: false, error: 'Unauthorized relayer API key' });
+      return;
+    }
     const ip = req.ip || 'unknown';
+    if ((activeIpJobs.get(ip) ?? 0) >= 1) {
+      res.status(429).json({ ok: false, error: 'Wait for your active Halo2 proof job to finish' });
+      return;
+    }
     if (!checkRateLimit(ip)) {
-      res.status(429).json({ ok: false, error: 'Rate limit exceeded (30 req / 5 min)' });
+      res.status(429).json({ ok: false, error: `Rate limit exceeded (${MAX_PROOFS_PER_IP_15M} proofs / 15 min)` });
       return;
     }
     try {
@@ -695,8 +797,11 @@ async function main() {
       const salt = parseFixedBytes(req.body.saltHex, 32, 'saltHex');
       const label = typeof req.body.label === 'string' ? req.body.label.slice(0, 64) : undefined;
       if (req.query.async === '1') {
+        activeIpJobs.set(ip, (activeIpJobs.get(ip) ?? 0) + 1);
         const job = engine.startAsyncJob('register', () =>
-          engine.registerPasskey({ publicKey, salt, label })
+          engine.registerPasskey({ publicKey, salt, label }).finally(() => {
+            activeIpJobs.set(ip, Math.max(0, (activeIpJobs.get(ip) ?? 1) - 1));
+          })
         );
         res.status(202).json({ ok: true, status: 'running', jobId: job.id });
         return;
@@ -713,9 +818,17 @@ async function main() {
   });
 
   app.post('/api/relay/authorize', async (req: Request, res: Response) => {
+    if (!checkApiKey(req)) {
+      res.status(401).json({ ok: false, error: 'Unauthorized relayer API key' });
+      return;
+    }
     const ip = req.ip || 'unknown';
+    if ((activeIpJobs.get(ip) ?? 0) >= 1) {
+      res.status(429).json({ ok: false, error: 'Wait for your active Halo2 proof job to finish' });
+      return;
+    }
     if (!checkRateLimit(ip)) {
-      res.status(429).json({ ok: false, error: 'Rate limit exceeded (30 req / 5 min)' });
+      res.status(429).json({ ok: false, error: `Rate limit exceeded (${MAX_PROOFS_PER_IP_15M} proofs / 15 min)` });
       return;
     }
     try {
@@ -727,6 +840,7 @@ async function main() {
       const requireBiometric = Boolean(req.body.requireBiometric);
 
       if (req.query.async === '1') {
+        activeIpJobs.set(ip, (activeIpJobs.get(ip) ?? 0) + 1);
         const job = engine.startAsyncJob('authorize', () =>
           engine.authorizeAction({
             publicKey,
@@ -735,6 +849,8 @@ async function main() {
             actionLabel,
             requireBiometric,
             assertion,
+          }).finally(() => {
+            activeIpJobs.set(ip, Math.max(0, (activeIpJobs.get(ip) ?? 1) - 1));
           })
         );
         res.status(202).json({ ok: true, status: 'running', jobId: job.id });
@@ -760,8 +876,12 @@ async function main() {
   });
 
   app.post('/api/relay/sponsor-tx', async (req: Request, res: Response) => {
+    if (!checkApiKey(req)) {
+      res.status(401).json({ ok: false, error: 'Unauthorized relayer API key' });
+      return;
+    }
     const ip = req.ip || 'unknown';
-    if (!checkRateLimit(ip)) {
+    if (!checkRateLimit(ip, 5, 60 * 60 * 1000)) {
       res.status(429).json({ ok: false, error: 'Rate limit exceeded' });
       return;
     }
@@ -776,6 +896,12 @@ async function main() {
         error: err instanceof Error ? err.message : String(err),
       });
     }
+  });
+
+  app.use((err: any, _req: Request, res: Response, _next: any) => {
+    const msg = err instanceof Error ? err.message : String(err);
+    const status = msg.includes('CORS') ? 403 : 400;
+    res.status(status).json({ ok: false, error: msg });
   });
 
   app.listen(PORT, HOST, () => {

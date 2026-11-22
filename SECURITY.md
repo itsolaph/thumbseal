@@ -21,3 +21,7 @@
 - Per-IP sliding-window rate limiting on all relayer POST endpoints.
 - Strict CORS origin allowlist bound to the deployed relying-party origin.
 - Relayer wallet seed loaded strictly from environment / `chmod 600` secret file, never logged or committed.
+
+- **Contract-scoped DUST sponsorship (`assertSponsorPolicy`):** `POST /api/relay/sponsor-tx` deserializes Ledger 9 `UnboundTransaction` payloads before balancing DUST fees and rejects any transaction containing contract deployments, shielded/unshielded value offers, non-`ContractCall` actions, non-allowlisted contract addresses, or non-allowlisted circuit entry points.
+- **Proving & budget quotas:** Per-IP concurrency cap (1 active Halo2 job per IP), sliding-window per-IP rate limits (10 proofs / 15 min; 5 sponsored txs / hour), global daily sponsored tx budget (`MAX_DAILY_SPONSORED_TX`), upfront NIST P-256 curve validation before proving, and optional `RELAYER_API_KEY` header authentication for production deployments (public sandbox runs with open demo access bounded strictly by these caps).
+- **Canonical SDK base64url decoding:** `fromBase64Url` enforces RFC 4648 valid lengths and zero trailing bits on the client side, matching the in-circuit bijectivity constraints in `PasskeyAuth.compact`.

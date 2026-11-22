@@ -125,6 +125,9 @@ export function fromBase64Url(str: string): Uint8Array {
   const map = new Map<string, number>();
   for (let i = 0; i < B64URL_ALPHABET.length; i++) map.set(B64URL_ALPHABET[i], i);
   const clean = str.replace(/=+$/, '');
+  if (clean.length % 4 === 1) {
+    throw new Error(`Invalid base64url length: ${clean.length}`);
+  }
   const bits: number[] = [];
   for (const ch of clean) {
     const v = map.get(ch);
@@ -144,7 +147,24 @@ export function fromBase64Url(str: string): Uint8Array {
       out[outIdx++] = (bitBuf >> bitCount) & 0xff;
     }
   }
+  // Enforce RFC 4648 canonical zero trailing bits
+  if (bitCount > 0 && (bitBuf & ((1 << bitCount) - 1)) !== 0) {
+    throw new Error('Non-canonical base64url encoding (non-zero trailing bits)');
+  }
   return out;
+}
+
+export function assertValidP256Point(pt: Secp256r1Point): void {
+  if (pt.identity || (pt.x === 0n && pt.y === 0n)) {
+    throw new Error('Invalid secp256r1 public key: point at infinity');
+  }
+  const xBytes = bigIntToBytes32BE(pt.x);
+  const yBytes = bigIntToBytes32BE(pt.y);
+  const uncompressed = new Uint8Array(65);
+  uncompressed[0] = 0x04;
+  uncompressed.set(xBytes, 1);
+  uncompressed.set(yBytes, 33);
+  p256.Point.fromBytes(uncompressed).assertValidity();
 }
 
 /**
