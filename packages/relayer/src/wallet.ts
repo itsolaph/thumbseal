@@ -1,11 +1,13 @@
 /**
  * Midnight Ledger 9 (Preview) Relayer Wallet & Provider Factory.
- * Manages shielded/unshielded/DUST sync, automatic NIGHT -> DUST registration,
- * and Ledger 9 MidnightProviders for contract deployment and sponsored tx submission.
+ * Manages shielded/unshielded/DUST sync, optional state snapshot persistence,
+ * automatic NIGHT -> DUST registration, and Ledger 9 MidnightProviders.
  * Licensed under the Apache License, Version 2.0.
  */
 
-import { firstValueFrom, filter, timeout } from 'rxjs';
+import fs from 'node:fs';
+import path from 'node:path';
+import { firstValueFrom, filter, timeout, tap } from 'rxjs';
 import * as ledgerV9 from '@midnight-ntwrk/ledger-v9';
 import { WalletSeeds } from '@midnight-ntwrk/wallet-sdk-hd';
 import { WalletFacade, type FacadeState } from '@midnight-ntwrk/wallet-sdk-facade';
@@ -44,8 +46,33 @@ export interface RelayerWalletHandle {
     isSynced: boolean;
     protocolVersion: number;
   }>;
-  ensureDustRegistered: () => Promise<{ registered: boolean; dustBalance: bigint }>;
+  ensureDustRegistered: () => Promise<{ registered: boolean; dustBalance: bigint; regTxId?: string }>;
+  saveSnapshot: () => Promise<void>;
   close: () => Promise<void>;
+}
+
+interface WalletSnapshot {
+  savedAt: string;
+  address: string;
+  shielded?: string;
+  unshielded?: string;
+  dust?: string;
+}
+
+function getCacheFilePath(): string | null {
+  return process.env.THUMBSEAL_WALLET_CACHE_FILE || null;
+}
+
+function loadSnapshot(expectedAddr: string): WalletSnapshot | null {
+  const p = getCacheFilePath();
+  if (!p || !fs.existsSync(p)) return null;
+  try {
+    const parsed = JSON.parse(fs.readFileSync(p, 'utf8')) as WalletSnapshot;
+    if (parsed.address !== expectedAddr) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
 }
 
 export async function createRelayerWallet(): Promise<RelayerWalletHandle> {
@@ -58,6 +85,10 @@ export async function createRelayerWallet(): Promise<RelayerWalletHandle> {
   const unshieldedPublicKey = PublicKey.fromKeyStore(keystore);
   const shieldedSecretKeys = ledgerV9.ZswapSecretKeys.fromSeed(seeds.shielded);
   const dustSecretKey = ledgerV9.DustSecretKey.fromSeed(seeds.dust);
+  const snapshot = loadSnapshot(unshieldedPublicKey.address);
+  if (snapshot) {
+    console.log('[Wallet] Restoring cached Midnight Preview snapshot from', snapshot.savedAt);
+  }
 
   const txHistoryStorage = new NoOpTransactionHistoryStorage();
 
@@ -76,22 +107,79 @@ export async function createRelayerWallet(): Promise<RelayerWalletHandle> {
     },
   };
 
+  let shieldedRef: any = null;
+  let unshieldedRef: any = null;
+  let dustRef: any = null;
+
   const facade = await WalletFacade.init({
     configuration: configuration as any,
-    shielded: (cfg) => ShieldedWallet(cfg as any).startWithSeed(seeds.shielded),
-    unshielded: (cfg) => UnshieldedWallet(cfg as any).startWithPublicKey(unshieldedPublicKey),
-    dust: (cfg) =>
-      DustWallet(cfg as any).startWithSeed(
-        seeds.dust,
-        ledgerV9.LedgerParameters.initialParameters().dust
-      ),
+    shielded: (cfg) => {
+      const api = ShieldedWallet(cfg as any);
+      shieldedRef = snapshot?.shielded ? api.restore(snapshot.shielded) : api.startWithSeed(seeds.shielded);
+      return shieldedRef;
+    },
+    unshielded: (cfg) => {
+      const api = UnshieldedWallet(cfg as any);
+      unshieldedRef = snapshot?.unshielded ? api.restore(snapshot.unshielded) : api.startWithPublicKey(unshieldedPublicKey);
+      return unshieldedRef;
+    },
+    dust: (cfg) => {
+      const api = DustWallet(cfg as any);
+      dustRef = snapshot?.dust
+        ? api.restore(snapshot.dust)
+        : api.startWithSeed(seeds.dust, ledgerV9.LedgerParameters.initialParameters().dust);
+      return dustRef;
+    },
   });
 
   await facade.start(seeds);
 
-  const waitForSync = async (timeoutMs = 120_000): Promise<FacadeState> => {
+  const saveSnapshot = async (): Promise<void> => {
+    const p = getCacheFilePath();
+    if (!p) return;
+    try {
+      const snap: WalletSnapshot = {
+        savedAt: new Date().toISOString(),
+        address: unshieldedPublicKey.address,
+      };
+      const sh = (facade as any).shielded ?? shieldedRef;
+      const un = (facade as any).unshielded ?? unshieldedRef;
+      const du = (facade as any).dust ?? dustRef;
+      if (typeof sh?.serializeState === 'function') {
+        snap.shielded = await sh.serializeState();
+      }
+      if (typeof un?.serializeState === 'function') {
+        snap.unshielded = await un.serializeState();
+      }
+      if (typeof du?.serializeState === 'function') {
+        snap.dust = await du.serializeState();
+      }
+      if (snap.shielded || snap.unshielded || snap.dust) {
+        fs.mkdirSync(path.dirname(p), { recursive: true });
+        fs.writeFileSync(p, JSON.stringify(snap), { mode: 0o600 });
+        console.log('[Wallet] Saved Midnight Preview snapshot to cache');
+      }
+    } catch (err) {
+      console.warn('[Wallet] Snapshot save skipped:', err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const waitForSync = async (timeoutMs = 900_000): Promise<FacadeState> => {
+    let lastLog = 0;
     return firstValueFrom(
       facade.state().pipe(
+        tap((s) => {
+          const now = Date.now();
+          if (now - lastLog >= 10_000 || s.isSynced) {
+            lastLog = now;
+            const sh = s.shielded?.progress;
+            const du = s.dust?.progress;
+            const un = s.unshielded?.progress?.isStrictlyComplete?.() ?? false;
+            console.log(
+              `[WalletSync] isSynced=${s.isSynced} unshielded=${un} shielded=${sh?.appliedIndex ?? 0n}/${sh?.highestRelevantWalletIndex ?? 0n} dust=${du?.appliedIndex ?? 0n}/${du?.highestRelevantWalletIndex ?? 0n} tDUST=${s.dust.balance(new Date()).toString()}`
+            );
+          }
+        }),
         filter((s) => s.isSynced),
         timeout(timeoutMs)
       )
@@ -122,24 +210,36 @@ export async function createRelayerWallet(): Promise<RelayerWalletHandle> {
     const availableUtxos = (state.unshielded.availableCoins as any[]).filter(
       (u) => !u.meta?.registeredForDustGeneration
     );
+    console.log('[Wallet] Unshielded UTXOs available for DUST registration:', availableUtxos.length);
     if (availableUtxos.length === 0) {
-      return { registered: false, dustBalance: curDust };
+      // Already registered, wait for DUST to accrue
+      console.log('[Wallet] UTXOs already registered for DUST; waiting for tDUST balance > 0...');
+      const updated = await firstValueFrom(
+        facade.state().pipe(
+          filter((s) => s.dust.balance(new Date()) > 0n),
+          timeout(180_000)
+        )
+      );
+      return { registered: false, dustBalance: updated.dust.balance(new Date()) };
     }
+    console.log('[Wallet] Submitting NIGHT -> DUST registration transaction...');
     const recipe = await facade.registerNightUtxosForDustGeneration(
       availableUtxos,
       keystore.getPublicKey(),
       keystore.signDataAsync
     );
     const finalized = await facade.finalizeRecipe(recipe);
-    await facade.submitTransaction(finalized);
-    // Wait briefly for DUST generation to register on-chain
+    const regTxId = await facade.submitTransaction(finalized);
+    console.log('[Wallet] NIGHT -> DUST registration tx submitted:', regTxId);
     const updated = await firstValueFrom(
       facade.state().pipe(
         filter((s) => s.dust.balance(new Date()) > 0n),
-        timeout(90_000)
+        timeout(180_000)
       )
     );
-    return { registered: true, dustBalance: updated.dust.balance(new Date()) };
+    const finalDust = updated.dust.balance(new Date());
+    console.log('[Wallet] tDUST accruing! Balance:', finalDust.toString());
+    return { registered: true, dustBalance: finalDust, regTxId: String(regTxId) };
   };
 
   return {
@@ -152,7 +252,9 @@ export async function createRelayerWallet(): Promise<RelayerWalletHandle> {
     waitForSync,
     getBalances,
     ensureDustRegistered,
+    saveSnapshot,
     close: async () => {
+      await saveSnapshot();
       await facade.stop();
     },
   };
@@ -205,6 +307,6 @@ export function createPreviewContractProviders<PS>(
     proofProvider,
     walletProvider,
     midnightProvider,
-    config: { networkId: PREVIEW_ENDPOINTS.networkId },
+    config: { networkId: PREVIEW_ENDPOINTS.networkId, ttlSeconds: 1800 },
   } as unknown as MidnightProviders<string, string, PS>;
 }

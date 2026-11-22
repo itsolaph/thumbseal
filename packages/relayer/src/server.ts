@@ -26,7 +26,7 @@ import {
   createCircuitContext,
   createConstructorContext,
   sampleContractAddress,
-  type ContractState,
+  ContractState,
 } from '@midnight-ntwrk/compact-runtime';
 import { CompiledContract } from '@midnight-ntwrk/compact-js';
 import { findDeployedContract } from '@midnight-ntwrk/midnight-js-contracts';
@@ -304,6 +304,19 @@ class RelayerEngine {
             privateStateId: 'thumbseal-relayer-live',
             initialPrivateState: { credential: bootstrap.credential },
           } as any);
+          await this.wallet.saveSnapshot();
+          try {
+            const liveState = await this.liveProviders.publicDataProvider.queryContractState(this.deployment.vaultAddress as any);
+            if (liveState && typeof (liveState as any).serialize === 'function') {
+              const hydrated = ContractState.deserialize((liveState as any).serialize());
+              // Validate hydrated state parses with ThumbSealVault.ledger before adopting
+              ThumbSealVault.ledger(hydrated.data);
+              this.localState = hydrated;
+              console.log('[Relayer] Hydrated local mirror from LIVE Midnight Preview state');
+            }
+          } catch (hydrateErr) {
+            console.warn('[Relayer] State hydrate skipped:', (hydrateErr as Error).message);
+          }
           console.log('[Relayer] Bound to LIVE Midnight Preview contract:', this.deployment.vaultAddress);
         } else {
           console.warn('[Relayer] Preview wallet synced with 0 tDUST; running in prover-verified mode until funded.');
@@ -447,7 +460,7 @@ class RelayerEngine {
 
       if (this.liveContract && this.liveProviders) {
         const t0 = performance.now();
-        await this.liveProviders.privateStateProvider.set('thumbseal-relayer-live', ps);
+        await (this.liveProviders.privateStateProvider as any).forContract(this.deployment!.vaultAddress).set('thumbseal-relayer-live', ps);
         const txRes = await this.liveContract.callTx.registerPasskey();
         txId = txRes?.public?.txId;
         proofStats = {
@@ -551,7 +564,7 @@ class RelayerEngine {
 
         if (this.liveContract && this.liveProviders) {
           const t0 = performance.now();
-          await this.liveProviders.privateStateProvider.set('thumbseal-relayer-live', ps);
+          await (this.liveProviders.privateStateProvider as any).forContract(this.deployment!.vaultAddress).set('thumbseal-relayer-live', ps);
           const txRes = await this.liveContract.callTx[circuitId](
             scopeId,
             actionTag,

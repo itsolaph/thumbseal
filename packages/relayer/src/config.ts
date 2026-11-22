@@ -60,7 +60,7 @@ export function loadRelayerSecrets(): RelayerSecrets {
   }
   return {
     masterSeed: Uint8Array.from(Buffer.from(seedHex, 'hex')),
-    privateStatePassword: pw || 'thumbseal-local-ephemeral-state-password-v1',
+    privateStatePassword: pw || 'ThumbSeal-Local-Ephemeral-State-Pw-9!',
   };
 }
 
@@ -74,6 +74,10 @@ export interface PreviewDeploymentRecord {
   counterAddress?: string;
   counterDeployTxId?: string;
   relayerUnshieldedAddress: string;
+  sampleRegisterTxId?: string;
+  sampleKeyCommitHex?: string;
+  sampleAuthorizeTxId?: string;
+  sampleNullifierHex?: string;
 }
 
 export function loadPreviewDeployment(): PreviewDeploymentRecord | null {

@@ -1,0 +1,18 @@
+{
+  "network": "preview",
+  "deployedAt": "2026-11-22T16:40:38.868Z",
+  "rpId": "thumbseal.pages.dev",
+  "origin": "https://thumbseal.pages.dev",
+  "vaultAddress": "39142ea476d78abe96a549839d861cdcdf5bad6e2cbd62d44eaa03eee05678bd",
+  "vaultDeployTxId": "006cde2598e787e3d775db5a235e195b32db55f01abfd318dcf7c9d99dd4d6445e",
+  "relayerUnshieldedAddress": "mn_addr_preview1j0mmyy8fw8xx96qd5lqx7u843hcg2u5e5qpzkuq9gmr68f3urw6qw7k7fz",
+  "sampleRegisterTxId": "004e508896c76484f1e71449f738183513762c5ac73f0c443e0d3d83b4ab2532ba",
+  "sampleKeyCommitHex": "d6c7c0ca1689f7d4e022ed62594c25948e6a377030707724861f3f17757d784d",
+  "counterAddress": "d6f01535a11ba2428557bb2e22eb6b020348e0eb483507d1cbacc24a47cd2e48",
+  "counterDeployTxId": "00f8fdc0425c97640318e34e3dfb16e006c4016fd49169ecad1fc0ab6360e4c0ae",
+  "genesisRegisterTxId": "00064627f6633bef96179bdaa6e1bf43ff966c833fbb55c73652b72b7ee4400c62",
+  "sampleAuthorizeTxId": "0080b995a05c64cbfb6a151fb9f173e8844e2d36a668f94b450224d13019378cd0",
+  "sampleNullifierHex": "39690e80dd57438291c85531237f88918ced74e98b0bc267a860006378554512",
+  "sampleActionTagHex": "ee0b42924483d5f019268ebf481352dd851d9fed303e6805c4a04ddab9e037c7",
+  "dustRegistrationTxId": "001cfe84c4b8b648e4446d3690cff46396a3f3bb02fb0d9213222462ad54b92380"
+}
