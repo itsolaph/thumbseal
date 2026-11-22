@@ -137,7 +137,8 @@ interface ActivityRecord {
   id: string;
   timestamp: string;
   circuit: string;
-  status: 'proved' | 'submitted' | 'reverted';
+  status: 'proved' | 'submitted' | 'reverted' | 'tamper-blocked';
+  tamperLabel?: string;
   nullifierHex?: string;
   keyCommitHex?: string;
   actionTagHex?: string;
@@ -503,6 +504,7 @@ class RelayerEngine {
     actionLabel: string;
     requireBiometric: boolean;
     assertion: WebAuthnAssertionWitness;
+    tamperLabel?: string;
   }) {
     return this.withLock(async () => {
       const scopeId = deriveScopeId(params.scopeLabel);
@@ -613,7 +615,8 @@ class RelayerEngine {
           id: crypto.randomUUID(),
           timestamp: new Date().toISOString(),
           circuit: circuitId,
-          status: 'reverted',
+          status: params.tamperLabel ? 'tamper-blocked' : 'reverted',
+          tamperLabel: params.tamperLabel,
           scopeLabel: params.scopeLabel,
           actionLabel: params.actionLabel,
           reason,
@@ -838,6 +841,7 @@ async function main() {
       const scopeLabel = String(req.body.scopeLabel || 'default:scope').slice(0, 128);
       const actionLabel = String(req.body.actionLabel || 'default:action').slice(0, 128);
       const requireBiometric = Boolean(req.body.requireBiometric);
+      const tamperLabel = typeof req.body.tamperLabel === 'string' ? req.body.tamperLabel.slice(0, 64) : undefined;
 
       if (req.query.async === '1') {
         activeIpJobs.set(ip, (activeIpJobs.get(ip) ?? 0) + 1);
@@ -849,6 +853,7 @@ async function main() {
             actionLabel,
             requireBiometric,
             assertion,
+            tamperLabel,
           }).finally(() => {
             activeIpJobs.set(ip, Math.max(0, (activeIpJobs.get(ip) ?? 1) - 1));
           })
@@ -864,6 +869,7 @@ async function main() {
         actionLabel,
         requireBiometric,
         assertion,
+        tamperLabel,
       });
       res.json(out);
     } catch (err) {

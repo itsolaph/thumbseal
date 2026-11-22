@@ -31,7 +31,8 @@ export interface ActivityItem {
   id: string;
   timestamp: string;
   circuit: string;
-  status: 'proved' | 'submitted' | 'reverted' | 'preflight';
+  status: 'proved' | 'submitted' | 'reverted' | 'tamper-blocked' | 'preflight';
+  tamperLabel?: string;
   nullifierHex?: string;
   keyCommitHex?: string;
   actionTagHex?: string;
@@ -106,12 +107,30 @@ export async function fetchBenchmarks(): Promise<{ ecosystem: any; zkir: any } |
   }
 }
 
-async function pollRelayJob(jobId: string, maxWaitMs = 240_000): Promise<any> {
+function sleepWithAbort(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new DOMException('Cancelled by user', 'AbortError'));
+      return;
+    }
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      reject(new DOMException('Cancelled by user', 'AbortError'));
+    };
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
+async function pollRelayJob(jobId: string, signal?: AbortSignal, maxWaitMs = 240_000): Promise<any> {
   const started = Date.now();
   while (Date.now() - started < maxWaitMs) {
-    await new Promise((r) => setTimeout(r, 1500));
+    await sleepWithAbort(1500, signal);
     const pollRes = await fetch(`${RELAYER_BASE}/api/relay/job/${encodeURIComponent(jobId)}`, {
-      signal: AbortSignal.timeout(10_000),
+      signal: signal ?? AbortSignal.timeout(10_000),
     });
     const data = await pollRes.json();
     if (data.status === 'running') continue;
@@ -123,10 +142,11 @@ async function pollRelayJob(jobId: string, maxWaitMs = 240_000): Promise<any> {
   throw new Error('Halo2 proving timed out waiting for relayer job');
 }
 
-export async function postRegisterPasskey(cred: PasskeyCredential) {
+export async function postRegisterPasskey(cred: PasskeyCredential, signal?: AbortSignal) {
   const res = await fetch(`${RELAYER_BASE}/api/relay/register?async=1`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
+    signal,
     body: JSON.stringify({
       publicKey: serializePubKeyForApi(cred),
       saltHex: bytesToHex(cred.salt),
@@ -138,7 +158,7 @@ export async function postRegisterPasskey(cred: PasskeyCredential) {
     throw new Error(data.error || `HTTP ${res.status}`);
   }
   if (data.status === 'running' && data.jobId) {
-    return pollRelayJob(data.jobId);
+    return pollRelayJob(data.jobId, signal);
   }
   return data;
 }
@@ -149,16 +169,20 @@ export async function postAuthorizeAction(params: {
   actionLabel: string;
   requireBiometric: boolean;
   assertion: WebAuthnAssertionWitness;
+  tamperLabel?: string;
+  signal?: AbortSignal;
 }) {
   const res = await fetch(`${RELAYER_BASE}/api/relay/authorize?async=1`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
+    signal: params.signal,
     body: JSON.stringify({
       publicKey: serializePubKeyForApi(params.cred),
       saltHex: bytesToHex(params.cred.salt),
       scopeLabel: params.scopeLabel,
       actionLabel: params.actionLabel,
       requireBiometric: params.requireBiometric,
+      tamperLabel: params.tamperLabel,
       assertion: serializeAssertionForApi(params.assertion),
     }),
   });
@@ -167,7 +191,7 @@ export async function postAuthorizeAction(params: {
     throw new Error(data.error || `HTTP ${res.status}`);
   }
   if (data.status === 'running' && data.jobId) {
-    return pollRelayJob(data.jobId);
+    return pollRelayJob(data.jobId, params.signal);
   }
   return data;
 }

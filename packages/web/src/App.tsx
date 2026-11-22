@@ -1,12 +1,14 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import {
+  ArrowDown,
   Check,
   Copy,
+  ExternalLink,
   Fingerprint,
   KeyRound,
   ShieldAlert,
   ShieldCheck,
-  Terminal,
+  X,
 } from 'lucide-react';
 import {
   buildCanonicalClientDataJSON,
@@ -29,7 +31,9 @@ import {
 import { AsciiField } from './components/AsciiField';
 import {
   AFTER_COUNTER_CODE,
+  AFTER_COUNTER_LINES,
   BEFORE_COUNTER_CODE,
+  CIRCUIT_ROLE_NOTES,
   INITIAL_CIRCUIT_ROWS,
   INITIAL_ECOSYSTEM_STATS,
   SDK_QUICKSTART_CODE,
@@ -46,8 +50,22 @@ import {
 
 const DEFAULT_RP_ID = 'thumbseal.pages.dev';
 const DEFAULT_ORIGIN = 'https://thumbseal.pages.dev';
+const REPO_URL = 'https://github.com/itsolaph/thumbseal';
+const CLONE_CMD = 'git clone https://github.com/itsolaph/thumbseal.git';
 
 type TabId = 'playground' | 'tamper' | 'quickstart';
+type BusyAction = 'register-hw' | 'register-virtual' | 'authorize' | 'tamper' | null;
+type AttackKind = 'replay' | 'phish' | 'tamperAction' | 'stripUp' | 'forgeSig';
+
+const TAB_ORDER: TabId[] = ['playground', 'tamper', 'quickstart'];
+
+const ATTACK_LABELS: Record<AttackKind, string> = {
+  replay: 'Replay spent scope',
+  phish: 'Phish origin',
+  tamperAction: 'Tamper action tag',
+  stripUp: 'Strip UP flag',
+  forgeSig: 'Flip signature bit',
+};
 
 function shortHex(hex: string | undefined, n = 10): string {
   if (!hex) return 'awaiting witness';
@@ -57,7 +75,8 @@ function shortHex(hex: string | undefined, n = 10): string {
 
 export function App() {
   const [activeTab, setActiveTab] = useState<TabId>('playground');
-  const [copiedCmd, setCopiedCmd] = useState(false);
+  const [feedView, setFeedView] = useState<'session' | 'global'>('session');
+  const [copiedTarget, setCopiedTarget] = useState<string | null>(null);
 
   // Relayer & live benchmark state
   const [health, setHealth] = useState<HealthResponse | null>(null);
@@ -73,11 +92,23 @@ export function App() {
   const [actionLabel, setActionLabel] = useState('vote:approve');
   const [requireBiometric, setRequireBiometric] = useState(true);
   const [simulateGrease, setSimulateGrease] = useState(false);
+  const [inputError, setInputError] = useState<string | null>(null);
 
-  // Execution results & mapping inspector
-  const [busy, setBusy] = useState(false);
+  // Proving progress & cancellation
+  const [busyAction, setBusyAction] = useState<BusyAction>(null);
+  const [elapsedSec, setElapsedSec] = useState(0);
+  const abortRef = useRef<AbortController | null>(null);
+  const tabRefs = useRef<Record<TabId, HTMLButtonElement | null>>({
+    playground: null,
+    tamper: null,
+    quickstart: null,
+  });
+  const step1Ref = useRef<HTMLDivElement | null>(null);
+  const spentLocalNullifiersRef = useRef<Set<string>>(new Set());
+
   const [lastResult, setLastResult] = useState<{
     ok: boolean;
+    tamperBlocked?: boolean;
     headline: string;
     detail: string;
     circuit?: string;
@@ -88,11 +119,24 @@ export function App() {
     leakedBytes?: number;
   } | null>(null);
   const [lastAssertion, setLastAssertion] = useState<WebAuthnAssertionWitness | null>(null);
-  const [localActivity, setLocalActivity] = useState<ActivityItem[]>([]);
+  const [sessionActivity, setSessionActivity] = useState<ActivityItem[]>([]);
 
+  const busy = busyAction !== null;
   const rpId = health?.rpId || DEFAULT_RP_ID;
   const origin = health?.origin || DEFAULT_ORIGIN;
   const rpIdHashHex = useMemo(() => bytesToHex(computeRpIdHash(rpId)), [rpId]);
+
+  useEffect(() => {
+    if (!busy) {
+      setElapsedSec(0);
+      return;
+    }
+    const started = Date.now();
+    const id = window.setInterval(() => {
+      setElapsedSec((Date.now() - started) / 1000);
+    }, 200);
+    return () => window.clearInterval(id);
+  }, [busy]);
 
   useEffect(() => {
     let active = true;
@@ -106,23 +150,31 @@ export function App() {
           measuredDate: String(b.ecosystem.measuredAt || '2026-11-22').slice(0, 10),
           totalProducts: b.ecosystem.totalProducts ?? INITIAL_ECOSYSTEM_STATS.totalProducts,
           reachableRepos: b.ecosystem.productsWithReachableRepo ?? INITIAL_ECOSYSTEM_STATS.reachableRepos,
-          laceDependentRepos: b.ecosystem.metrics.mentionsLaceAmongReachableRepos ?? INITIAL_ECOSYSTEM_STATS.laceDependentRepos,
-          lacePercent: b.ecosystem.metrics.mentionsLacePercentOfReachableRepos ?? INITIAL_ECOSYSTEM_STATS.lacePercent,
+          laceDependentRepos:
+            b.ecosystem.metrics.mentionsLaceAmongReachableRepos ??
+            INITIAL_ECOSYSTEM_STATS.laceDependentRepos,
+          lacePercent:
+            b.ecosystem.metrics.mentionsLacePercentOfReachableRepos ??
+            INITIAL_ECOSYSTEM_STATS.lacePercent,
           reusablePasskeySdks: 0,
         });
       }
       if (Array.isArray(b?.zkir?.circuits) && b.zkir.circuits.length > 0) {
         setCircuitRows(
-          b.zkir.circuits.map((c: any) => ({
-            contract: c.contract,
-            circuit: c.circuit,
-            kParam: c.proverKeyMB < 100 ? 'k=15' : c.proverKeyMB < 300 ? 'k=17' : 'k=18',
-            zkirInstructions: c.zkirInstructions,
-            proverKeyMB: c.proverKeyMB,
-            verifierKeyBytes: c.verifierKeyBytes,
-            proveLabel: c.proveMs ? `${(c.proveMs / 1000).toFixed(2)} s (${c.proofBytes} B)` : 'Compiled',
-            highlight: c.circuit === 'authorizeAction',
-          }))
+          b.zkir.circuits.map((c: any) => {
+            const key = `${c.contract}.${c.circuit}`;
+            return {
+              contract: c.contract,
+              circuit: c.circuit,
+              kParam: c.k ? `k=${c.k}` : c.proverKeyMB < 100 ? 'k=15' : c.proverKeyMB < 300 ? 'k=17' : 'k=18',
+              zkirInstructions: c.zkirInstructions,
+              proverKeyMB: c.proverKeyMB,
+              verifierKeyBytes: c.verifierKeyBytes,
+              proveTime: c.proveMs ? `${(c.proveMs / 1000).toFixed(2)} s` : 'Compiled',
+              roleNote: CIRCUIT_ROLE_NOTES[key] || c.note || 'Compiled ZKIR v3 circuit',
+              highlight: c.circuit === 'authorizeAction',
+            };
+          })
         );
       }
     })();
@@ -137,21 +189,49 @@ export function App() {
     return host === rpId || host === 'localhost' || host === '127.0.0.1';
   }, [rpId]);
 
-  const copyInstallCmd = async () => {
+  const copyText = async (target: string, text: string) => {
     try {
-      await navigator.clipboard.writeText('npm i @thumbseal/sdk @thumbseal/contracts');
-      setCopiedCmd(true);
-      setTimeout(() => setCopiedCmd(false), 1800);
-    } catch {}
+      await navigator.clipboard.writeText(text);
+      setCopiedTarget(target);
+      window.setTimeout(() => setCopiedTarget((cur) => (cur === target ? null : cur)), 1800);
+    } catch {
+      setCopiedTarget(`${target}:err`);
+      window.setTimeout(() => setCopiedTarget(null), 2000);
+    }
   };
 
-  const pushLocalActivity = (item: ActivityItem) => {
-    setLocalActivity((prev) => [item, ...prev].slice(0, 14));
+  const pushSessionActivity = (item: ActivityItem) => {
+    setSessionActivity((prev) => [item, ...prev].slice(0, 14));
+    setFeedView('session');
+  };
+
+  const cancelProving = () => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+  };
+
+  const handleTabKeyDown = (e: KeyboardEvent<HTMLButtonElement>, current: TabId) => {
+    const idx = TAB_ORDER.indexOf(current);
+    let nextIdx = -1;
+    if (e.key === 'ArrowRight') nextIdx = (idx + 1) % TAB_ORDER.length;
+    else if (e.key === 'ArrowLeft') nextIdx = (idx - 1 + TAB_ORDER.length) % TAB_ORDER.length;
+    else if (e.key === 'Home') nextIdx = 0;
+    else if (e.key === 'End') nextIdx = TAB_ORDER.length - 1;
+    if (nextIdx >= 0) {
+      e.preventDefault();
+      const nextId = TAB_ORDER[nextIdx];
+      setActiveTab(nextId);
+      tabRefs.current[nextId]?.focus();
+    }
   };
 
   const handleRegister = async (kind: 'hardware' | 'virtual') => {
-    setBusy(true);
+    setBusyAction(kind === 'hardware' ? 'register-hw' : 'register-virtual');
     setLastResult(null);
+    setInputError(null);
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     try {
       let cred: PasskeyCredential;
       if (kind === 'hardware') {
@@ -177,9 +257,20 @@ export function App() {
       setCredential(cred);
 
       if (health?.ok) {
-        const res = await postRegisterPasskey(cred);
+        const res = await postRegisterPasskey(cred, controller.signal);
         setRegisteredCommit(res.keyCommitHex);
         setHealth((prev) => (prev ? { ...prev, vault: res.ledger } : prev));
+        pushSessionActivity({
+          id: crypto.randomUUID(),
+          timestamp: new Date().toISOString(),
+          circuit: 'registerPasskey',
+          status: res.txId ? 'submitted' : 'proved',
+          keyCommitHex: res.keyCommitHex,
+          proofBytes: res.proofBytes,
+          proveMs: res.proveMs,
+          txId: res.txId ?? undefined,
+          mode: health.mode,
+        });
         setLastResult({
           ok: true,
           headline: 'Passkey commitment proved and inserted into HistoricMerkleTree<16>',
@@ -195,7 +286,7 @@ export function App() {
           deriveActionTag(`${cred.publicKey.x.toString(16)}:${bytesToHex(cred.salt)}`)
         );
         setRegisteredCommit(pseudoCommit);
-        pushLocalActivity({
+        pushSessionActivity({
           id: crypto.randomUUID(),
           timestamp: new Date().toISOString(),
           circuit: 'registerPasskey',
@@ -213,56 +304,84 @@ export function App() {
         });
       }
     } catch (err) {
+      const cancelled = err instanceof DOMException && err.name === 'AbortError';
       setLastResult({
         ok: false,
-        headline: 'Passkey registration reverted',
-        detail: err instanceof Error ? err.message : String(err),
+        headline: cancelled ? 'Proving wait cancelled' : 'Passkey registration failed',
+        detail: cancelled
+          ? 'Stopped waiting for the relayer response. You can retry with Hardware passkey or Virtual P-256 key.'
+          : err instanceof Error
+            ? err.message
+            : String(err),
       });
     } finally {
-      setBusy(false);
+      abortRef.current = null;
+      setBusyAction(null);
     }
   };
 
-  const handleAuthorize = async (attack?: 'replay' | 'phish' | 'tamperAction' | 'stripUp' | 'forgeSig') => {
+  const handleAuthorize = async (attack?: AttackKind) => {
     if (!credential) {
       setLastResult({
         ok: false,
-        headline: 'Register a passkey first',
-        detail: 'Create a hardware passkey or virtual P-256 authenticator before authorizing an action.',
+        headline: 'Enroll a passkey in Step 1 first',
+        detail: 'Create a Hardware passkey or Virtual P-256 key before signing an action.',
       });
       return;
     }
 
-    setBusy(true);
+    const cleanScope = scopeLabel.trim();
+    const cleanAction = actionLabel.trim();
+    if (!cleanScope || !cleanAction) {
+      setInputError('Both scope identifier and action tag are required.');
+      return;
+    }
+    setInputError(null);
+
+    setBusyAction(attack ? 'tamper' : 'authorize');
     setLastResult(null);
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    const rpHash = computeRpIdHash(rpId);
+    const scopeId = deriveScopeId(cleanScope);
+    const actionTag = deriveActionTag(cleanAction);
+    const challenge = deriveChallenge(DOMAIN_TAGS.ACTION, rpHash, scopeId, actionTag);
+    const mode: ClientDataMode = simulateGrease ? 2n : 0n;
+    const targetCircuit = mode === 2n ? 'authorizeActionGrease' : 'authorizeAction';
+    let submittedActionLabel = cleanAction;
+    let activeCred = credential;
+
     try {
-      const rpHash = computeRpIdHash(rpId);
-      const scopeId = deriveScopeId(scopeLabel);
-      const actionTag = deriveActionTag(actionLabel);
-      const challenge = deriveChallenge(DOMAIN_TAGS.ACTION, rpHash, scopeId, actionTag);
-      const mode: ClientDataMode = simulateGrease ? 2n : 0n;
-
       let witness: WebAuthnAssertionWitness;
-      let submittedActionLabel = actionLabel;
 
-      if (credential.kind === 'hardware' && !attack) {
+      if (credential.kind === 'hardware' && (!attack || attack === 'replay' || attack === 'tamperAction')) {
         const signed = await signBrowserAction({
           credential,
           challenge,
           userVerification: requireBiometric ? 'required' : 'preferred',
         });
         witness = signed.witness;
+        if (attack === 'tamperAction') {
+          submittedActionLabel = `${cleanAction}:tampered`;
+        }
       } else {
+        if (!virtualAuth && attack && credential.kind === 'hardware') {
+          throw new Error(
+            `${ATTACK_LABELS[attack]} mutates wire-level authenticatorData/clientDataJSON bytes that hardware Secure Enclaves refuse to forge. Click "Virtual P-256 key" in Step 1 to test wire-level tampering.`
+          );
+        }
         const signer =
           virtualAuth ??
-          new VirtualPasskeyAuthenticator({ rpId, origin, label: 'Virtual Attack Signer' });
+          new VirtualPasskeyAuthenticator({ rpId, origin, label: 'Virtual P-256 Key' });
+        activeCred = signer.credential;
 
         if (attack === 'phish') {
           const evilJson = buildCanonicalClientDataJSON(challenge, 'https://evil-phish.pages.dev', 0n);
           witness = signer.signAssertion({ challenge, overrideClientDataJSON: evilJson }).witness;
         } else if (attack === 'tamperAction') {
           witness = signer.signAssertion({ challenge, clientDataMode: mode }).witness;
-          submittedActionLabel = `${actionLabel}:tampered`;
+          submittedActionLabel = `${cleanAction}:tampered`;
         } else if (attack === 'stripUp') {
           witness = signer.signAssertion({ challenge, flags: 0x04, clientDataMode: mode }).witness;
         } else if (attack === 'forgeSig') {
@@ -280,17 +399,33 @@ export function App() {
 
       if (health?.ok) {
         const res = await postAuthorizeAction({
-          cred: credential,
-          scopeLabel,
+          cred: activeCred,
+          scopeLabel: cleanScope,
           actionLabel: submittedActionLabel,
           requireBiometric,
           assertion: witness,
+          tamperLabel: attack ? ATTACK_LABELS[attack] : undefined,
+          signal: controller.signal,
         });
         setHealth((prev) => (prev ? { ...prev, vault: res.ledger } : prev));
+        pushSessionActivity({
+          id: crypto.randomUUID(),
+          timestamp: new Date().toISOString(),
+          circuit: res.circuit,
+          status: res.txId ? 'submitted' : 'proved',
+          nullifierHex: res.nullifierHex,
+          actionTagHex: res.actionTagHex,
+          scopeLabel: cleanScope,
+          actionLabel: submittedActionLabel,
+          proofBytes: res.proofBytes,
+          proveMs: res.proveMs,
+          txId: res.txId ?? undefined,
+          mode: health.mode,
+        });
         setLastResult({
           ok: true,
           headline: `Authorized anonymously via ${res.circuit}`,
-          detail: `Scoped nullifier ${shortHex(res.nullifierHex)} recorded. Public ledger contains 0 bytes of passkey identity.`,
+          detail: `Scoped nullifier ${shortHex(res.nullifierHex)} recorded. Serialized public ledger contains ${res.leakedBytes} leaked identity bytes.`,
           circuit: res.circuit,
           nullifierHex: res.nullifierHex,
           proofBytes: res.proofBytes,
@@ -305,86 +440,106 @@ export function App() {
           scopeId,
           deriveActionTag(submittedActionLabel)
         );
-        const valid =
-          bytesToHex(expectedChal) === bytesToHex(challenge) &&
-          preflightVerifyAssertion({
-            publicKey: credential.publicKey,
-            rpIdHash: rpHash,
-            origin,
-            expectedChallenge: expectedChal,
-            requireUv: requireBiometric,
-            assertion: witness,
-          });
-        if (!valid) {
-          throw new Error(
-            attack === 'stripUp'
-              ? 'WebAuthn User Presence (UP) flag must be set'
-              : attack === 'tamperAction'
-                ? 'Challenge witness bytes do not match expected challenge'
-                : 'Invalid secp256r1 WebAuthn signature'
-          );
-        }
         const nf = bytesToHex(
           deriveScopedNullifier(
-            deriveActionTag(registeredCommit || 'local'),
+            deriveActionTag(`${activeCred.publicKey.x.toString(16)}:${bytesToHex(activeCred.salt)}`),
             rpHash,
             scopeId
           )
         );
-        pushLocalActivity({
+        if (spentLocalNullifiersRef.current.has(nf)) {
+          throw new Error('Scoped nullifier already spent (replay blocked)');
+        }
+        const valid =
+          bytesToHex(expectedChal) === bytesToHex(challenge) &&
+          preflightVerifyAssertion({
+            publicKey: activeCred.publicKey,
+            rpIdHash: rpHash,
+            origin,
+            expectedChallenge: expectedChal,
+            requireUv: requireBiometric,
+            witness,
+          });
+        if (!valid) {
+          throw new Error(
+            attack === 'phish'
+              ? 'Phished origin rejected (clientDataJSON hash mismatch)'
+              : attack === 'stripUp'
+                ? 'User Presence (UP) flag required'
+                : attack === 'tamperAction'
+                  ? 'Challenge mismatch on tampered action tag'
+                  : 'Invalid secp256r1 WebAuthn signature'
+          );
+        }
+        spentLocalNullifiersRef.current.add(nf);
+        pushSessionActivity({
           id: crypto.randomUUID(),
           timestamp: new Date().toISOString(),
-          circuit: witness.clientDataMode === 2n ? 'authorizeActionGrease' : 'authorizeAction',
+          circuit: targetCircuit,
           status: 'preflight',
           nullifierHex: nf,
-          scopeLabel,
+          scopeLabel: cleanScope,
           actionLabel: submittedActionLabel,
           mode: 'local-preflight',
         });
         setLastResult({
           ok: true,
           headline: 'P-256 WebAuthn assertion verified locally (preflight)',
-          detail: `Verified secp256r1 ECDSA + W3C clientDataMode=${witness.clientDataMode}. Connect relayer for Halo2 ZKIR-v3 proving.`,
-          circuit: witness.clientDataMode === 2n ? 'authorizeActionGrease' : 'authorizeAction',
+          detail: `Nullifier ${shortHex(nf)} derived locally; 0 identity bytes disclosed.`,
+          circuit: targetCircuit,
           nullifierHex: nf,
           leakedBytes: 0,
         });
       }
     } catch (err) {
+      const cancelled = err instanceof DOMException && err.name === 'AbortError';
       const msg = err instanceof Error ? err.message : String(err);
-      if (!health?.ok) {
-        pushLocalActivity({
+      if (!cancelled) {
+        pushSessionActivity({
           id: crypto.randomUUID(),
           timestamp: new Date().toISOString(),
-          circuit: 'authorizeAction',
-          status: 'reverted',
-          scopeLabel,
-          actionLabel,
+          circuit: targetCircuit,
+          status: attack ? 'tamper-blocked' : 'reverted',
+          tamperLabel: attack ? ATTACK_LABELS[attack] : undefined,
+          scopeLabel: cleanScope,
+          actionLabel: submittedActionLabel,
           reason: msg,
-          mode: 'local-preflight',
+          mode: health?.mode || 'local-preflight',
         });
       }
       setLastResult({
         ok: false,
-        headline: attack ? 'Adversarial tamper blocked by circuit' : 'Authorization reverted',
-        detail: msg,
+        tamperBlocked: Boolean(attack) && !cancelled,
+        headline: cancelled
+          ? 'Proving wait cancelled'
+          : attack
+            ? `Adversarial attack blocked: ${ATTACK_LABELS[attack]}`
+            : 'Authorization reverted',
+        detail: cancelled
+          ? 'Stopped waiting for the relayer job. Your passkey stays enrolled.'
+          : msg,
       });
     } finally {
-      setBusy(false);
+      abortRef.current = null;
+      setBusyAction(null);
     }
   };
 
-  const activityFeed: ActivityItem[] = health?.vault?.recentActivity?.length
-    ? health.vault.recentActivity
-    : localActivity;
+  const globalActivity = health?.vault?.recentActivity ?? [];
+  const activityFeed = feedView === 'session' ? sessionActivity : globalActivity;
 
   const statusText = !relayerChecked
     ? 'Checking relayer and proof-server status'
     : health?.ok
       ? health.mode === 'preview-live'
-        ? `Live on Midnight Preview (DUST sponsored, proof-server 9.0.2 healthy)`
-        : `Relayer online with real Halo2 proof-server 9.0.2`
+        ? 'Midnight Preview live (DUST sponsored, proof-server 9.0.2)'
+        : 'Relayer online with Halo2 proof-server 9.0.2'
       : 'Local P-256 preflight verifier active';
+
+  const scrollToPlayground = () => {
+    document.getElementById('playground')?.scrollIntoView({ behavior: 'smooth' });
+    window.setTimeout(() => step1Ref.current?.focus(), 350);
+  };
 
   return (
     <>
@@ -399,11 +554,24 @@ export function App() {
             <a href="#boundary">Proof boundary</a>
             <a href="#migration">Migration</a>
             <a href="#benchmarks">Benchmarks</a>
+            <a href={REPO_URL} target="_blank" rel="noreferrer" className="nav-ext">
+              <span>GitHub</span>
+              <ExternalLink size={13} aria-hidden="true" />
+            </a>
           </nav>
-          <a href="#playground" className="key key--primary key--compact">
+          <a href="#playground" className="key key--compact">
             Try passkey
           </a>
         </div>
+        <nav className="nav-mobile" aria-label="Mobile sections">
+          <a href="#playground">Playground</a>
+          <a href="#boundary">Proof boundary</a>
+          <a href="#migration">Migration</a>
+          <a href="#benchmarks">Benchmarks</a>
+          <a href={REPO_URL} target="_blank" rel="noreferrer">
+            GitHub
+          </a>
+        </nav>
       </header>
 
       <main id="top">
@@ -415,33 +583,39 @@ export function App() {
                 <h1>Passkeys replace wallets on Midnight.</h1>
               </div>
               <p className="lead">
-                Verify TouchID or FaceID inside Compact 0.36 circuits with sponsored DUST.
+                Verify TouchID or FaceID inside Compact 0.36.1 circuits with sponsored DUST.
               </p>
               <div className="hero-actions">
                 <button
                   type="button"
                   className="key key--primary"
-                  disabled={busy}
-                  onClick={() => {
-                    document.getElementById('playground')?.scrollIntoView({ behavior: 'smooth' });
-                    void handleRegister(canUseHardware ? 'hardware' : 'virtual');
-                  }}
+                  onClick={scrollToPlayground}
                 >
                   <Fingerprint size={18} aria-hidden="true" />
-                  <span>{canUseHardware ? 'Register passkey' : 'Register virtual P-256'}</span>
+                  <span>Try passkey playground</span>
                 </button>
                 <a href="#boundary" className="key">
                   Inspect zero-leak proof
                 </a>
               </div>
               <div className="cmd-chip">
-                <code>npm i @thumbseal/sdk</code>
-                <button type="button" className="cmd-copy" onClick={copyInstallCmd}>
-                  {copiedCmd ? <Check size={14} aria-hidden="true" /> : <Copy size={14} aria-hidden="true" />}
-                  <span className="visually-hidden">Copy install command</span>
+                <code>{CLONE_CMD}</code>
+                <button
+                  type="button"
+                  className="cmd-copy"
+                  onClick={() => void copyText('clone', CLONE_CMD)}
+                >
+                  {copiedTarget === 'clone' ? (
+                    <Check size={14} aria-hidden="true" />
+                  ) : (
+                    <Copy size={14} aria-hidden="true" />
+                  )}
+                  <span className="visually-hidden">
+                    {copiedTarget === 'clone' ? 'Clone command copied' : 'Copy git clone command'}
+                  </span>
                 </button>
               </div>
-              <div className="status-line" role="status">
+              <div className="status-line" role="status" aria-live="polite">
                 <ShieldCheck size={16} aria-hidden="true" />
                 <span>{statusText}</span>
               </div>
@@ -454,123 +628,210 @@ export function App() {
             <div className="section-head">
               <h2>Sign with hardware, prove without a wallet</h2>
               <p className="lead">
-                Enroll a P-256 passkey, sign a scoped action, and test real circuit reverts on
-                Compact 0.28 and ZKIR v3.
+                Enroll a P-256 passkey, sign a scoped action, and verify real circuit reverts on
+                Compact 0.36.1, ZKIR v3, and Ledger 9.
               </p>
             </div>
 
             <div className="tray" role="tablist" aria-label="Playground modes">
               <button
+                id="tab-playground"
+                ref={(el) => {
+                  tabRefs.current.playground = el;
+                }}
                 type="button"
                 role="tab"
                 className="tray-key"
                 aria-selected={activeTab === 'playground'}
+                aria-controls="panel-playground"
+                tabIndex={activeTab === 'playground' ? 0 : -1}
                 onClick={() => setActiveTab('playground')}
+                onKeyDown={(e) => handleTabKeyDown(e, 'playground')}
               >
                 Enroll and authorize
               </button>
               <button
+                id="tab-tamper"
+                ref={(el) => {
+                  tabRefs.current.tamper = el;
+                }}
                 type="button"
                 role="tab"
                 className="tray-key"
                 aria-selected={activeTab === 'tamper'}
+                aria-controls="panel-tamper"
+                tabIndex={activeTab === 'tamper' ? 0 : -1}
                 onClick={() => setActiveTab('tamper')}
+                onKeyDown={(e) => handleTabKeyDown(e, 'tamper')}
               >
                 Adversarial tamper lab
               </button>
               <button
+                id="tab-quickstart"
+                ref={(el) => {
+                  tabRefs.current.quickstart = el;
+                }}
                 type="button"
                 role="tab"
                 className="tray-key"
                 aria-selected={activeTab === 'quickstart'}
+                aria-controls="panel-quickstart"
+                tabIndex={activeTab === 'quickstart' ? 0 : -1}
                 onClick={() => setActiveTab('quickstart')}
+                onKeyDown={(e) => handleTabKeyDown(e, 'quickstart')}
               >
                 SDK quickstart
               </button>
             </div>
 
             {activeTab === 'quickstart' ? (
-              <div className="code-block">
+              <div
+                id="panel-quickstart"
+                role="tabpanel"
+                aria-labelledby="tab-quickstart"
+                className="code-block"
+              >
                 <div className="graphite-bar">
                   <span>packages/sdk/examples/walletless-flow.ts</span>
-                  <span>Apache-2.0</span>
+                  <button
+                    type="button"
+                    className="code-copy-btn"
+                    onClick={() => void copyText('quickstart', SDK_QUICKSTART_CODE)}
+                  >
+                    {copiedTarget === 'quickstart' ? (
+                      <>
+                        <Check size={13} aria-hidden="true" />
+                        <span>Copied</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy size={13} aria-hidden="true" />
+                        <span>Copy snippet</span>
+                      </>
+                    )}
+                  </button>
                 </div>
                 <pre>{SDK_QUICKSTART_CODE}</pre>
               </div>
             ) : (
-              <div className="workbench-grid">
+              <div
+                id={activeTab === 'playground' ? 'panel-playground' : 'panel-tamper'}
+                role="tabpanel"
+                aria-labelledby={activeTab === 'playground' ? 'tab-playground' : 'tab-tamper'}
+                className="workbench-grid"
+              >
                 <div className="cut">
                   <div className="panel-body">
-                    <div className="field-group">
+                    <div className="field-group" ref={step1Ref} tabIndex={-1}>
                       <span className="field-label">Step 1: Passkey credential (stays on device)</span>
                       <div className="action-strip">
+                        {canUseHardware && (
+                          <button
+                            type="button"
+                            className="key key--primary key--compact"
+                            disabled={busy}
+                            onClick={() => void handleRegister('hardware')}
+                          >
+                            <Fingerprint size={16} aria-hidden="true" />
+                            <span>
+                              {busyAction === 'register-hw'
+                                ? `Proving registerPasskey (${elapsedSec.toFixed(1)}s)...`
+                                : 'Hardware passkey'}
+                            </span>
+                          </button>
+                        )}
                         <button
                           type="button"
-                          className="key key--primary key--compact"
-                          disabled={busy || !canUseHardware}
-                          onClick={() => void handleRegister('hardware')}
-                        >
-                          <Fingerprint size={16} aria-hidden="true" />
-                          <span>Hardware passkey</span>
-                        </button>
-                        <button
-                          type="button"
-                          className="key key--compact"
+                          className={
+                            canUseHardware
+                              ? 'key key--compact'
+                              : 'key key--primary key--compact'
+                          }
                           disabled={busy}
                           onClick={() => void handleRegister('virtual')}
                         >
                           <KeyRound size={16} aria-hidden="true" />
-                          <span>Virtual P-256 key</span>
+                          <span>
+                            {busyAction === 'register-virtual'
+                              ? `Proving registerPasskey (${elapsedSec.toFixed(1)}s)...`
+                              : 'Virtual P-256 key'}
+                          </span>
                         </button>
                       </div>
-                      {credential && (
-                        <div className="mono-val">
-                          Active: {credential.label} (commit {shortHex(registeredCommit, 8)})
-                        </div>
-                      )}
+                      <p className="field-hint">
+                        {credential
+                          ? `Enrolled ${credential.label} (commit ${shortHex(registeredCommit, 8)}). Private key stays local.`
+                          : 'No biometric sensor on this device? Virtual P-256 runs the exact same Halo2 k=15/k=17 circuits.'}
+                      </p>
                     </div>
 
                     {activeTab === 'playground' ? (
                       <>
-                        <div className="field-row">
-                          <label className="field-group">
-                            <span className="field-label">Scope identifier (1 authorization per scope)</span>
-                            <input
-                              className="input-cut"
-                              value={scopeLabel}
-                              onChange={(e) => setScopeLabel(e.target.value)}
-                            />
-                          </label>
-                          <label className="field-group">
-                            <span className="field-label">Action tag (bound into WebAuthn challenge)</span>
-                            <input
-                              className="input-cut"
-                              value={actionLabel}
-                              onChange={(e) => setActionLabel(e.target.value)}
-                            />
-                          </label>
+                        <div className="step-divider" />
+                        <div className="field-group">
+                          <span className="field-label">
+                            Step 2: Authorize scoped action (anonymous Merkle membership + nullifier)
+                          </span>
+                          <div className="field-row">
+                            <label className="field-group">
+                              <span className="field-sublabel">Scope identifier (1 proof per scope)</span>
+                              <input
+                                type="text"
+                                className="input-cut"
+                                value={scopeLabel}
+                                onChange={(e) => {
+                                  setScopeLabel(e.target.value);
+                                  if (inputError) setInputError(null);
+                                }}
+                                disabled={busy}
+                              />
+                            </label>
+                            <label className="field-group">
+                              <span className="field-sublabel">Action tag (bound into WebAuthn challenge)</span>
+                              <input
+                                type="text"
+                                className="input-cut"
+                                value={actionLabel}
+                                onChange={(e) => {
+                                  setActionLabel(e.target.value);
+                                  if (inputError) setInputError(null);
+                                }}
+                                disabled={busy}
+                              />
+                            </label>
+                          </div>
+                          {inputError && <p className="field-error">{inputError}</p>}
                         </div>
 
-                        <div className="action-strip">
-                          <label className="toggle-row">
-                            <input
-                              type="checkbox"
-                              checked={requireBiometric}
-                              onChange={(e) => setRequireBiometric(e.target.checked)}
-                            />
-                            <span>Require biometric User Verification (UV bit)</span>
-                          </label>
-                          {credential?.kind !== 'hardware' && (
+                        <details className="adv-details">
+                          <summary>Advanced WebAuthn circuit options</summary>
+                          <div className="adv-body">
                             <label className="toggle-row">
                               <input
                                 type="checkbox"
-                                checked={simulateGrease}
-                                onChange={(e) => setSimulateGrease(e.target.checked)}
+                                checked={requireBiometric}
+                                onChange={(e) => setRequireBiometric(e.target.checked)}
+                                disabled={busy}
                               />
-                              <span>Simulate Chrome 20% GREASE suffix</span>
+                              <span>
+                                Require biometric User Verification (UV bit) &mdash; enforces TouchID/FaceID check inside the circuit
+                              </span>
                             </label>
-                          )}
-                        </div>
+                            {credential?.kind !== 'hardware' && (
+                              <label className="toggle-row">
+                                <input
+                                  type="checkbox"
+                                  checked={simulateGrease}
+                                  onChange={(e) => setSimulateGrease(e.target.checked)}
+                                  disabled={busy}
+                                />
+                                <span>
+                                  Simulate Chrome 20% GREASE suffix &mdash; routes to isolated k=18 verifier sharing the same nullifier set
+                                </span>
+                              </label>
+                            )}
+                          </div>
+                        </details>
 
                         <div className="action-strip">
                           <button
@@ -580,90 +841,149 @@ export function App() {
                             onClick={() => void handleAuthorize()}
                           >
                             <ShieldCheck size={18} aria-hidden="true" />
-                            <span>{busy ? 'Proving Halo2 circuit...' : 'Sign and prove action'}</span>
+                            <span>
+                              {busyAction === 'authorize'
+                                ? `Proving Halo2 circuit (${elapsedSec.toFixed(1)}s)...`
+                                : 'Sign and prove action'}
+                            </span>
                           </button>
                           <button
                             type="button"
                             className="key"
                             disabled={busy || !credential}
-                            onClick={() => setScopeLabel(`dao:proposal:${Math.floor(100 + Math.random() * 899)}`)}
+                            onClick={() =>
+                              setScopeLabel(`dao:proposal:${Math.floor(100 + Math.random() * 899)}`)
+                            }
                           >
                             Fresh scope
                           </button>
+                          {busy && (
+                            <button
+                              type="button"
+                              className="key key--compact"
+                              onClick={cancelProving}
+                            >
+                              <X size={15} aria-hidden="true" />
+                              <span>Cancel</span>
+                            </button>
+                          )}
                         </div>
+                        {!credential && !busy && (
+                          <p className="field-hint">
+                            Complete Step 1 above to enable signing and Halo2 proving.
+                          </p>
+                        )}
                       </>
                     ) : (
-                      <div className="field-group">
-                        <span className="field-label">
-                          Trigger real attack payloads against the compiled PasskeyAuth.compact verifier
-                        </span>
-                        <div className="action-strip">
-                          <button
-                            type="button"
-                            className="key key--danger key--compact"
-                            disabled={busy || !credential}
-                            onClick={() => void handleAuthorize('replay')}
-                          >
-                            <ShieldAlert size={15} aria-hidden="true" />
-                            <span>Replay spent scope</span>
-                          </button>
-                          <button
-                            type="button"
-                            className="key key--danger key--compact"
-                            disabled={busy || !credential}
-                            onClick={() => void handleAuthorize('phish')}
-                          >
-                            <ShieldAlert size={15} aria-hidden="true" />
-                            <span>Phish origin</span>
-                          </button>
-                          <button
-                            type="button"
-                            className="key key--danger key--compact"
-                            disabled={busy || !credential}
-                            onClick={() => void handleAuthorize('tamperAction')}
-                          >
-                            <ShieldAlert size={15} aria-hidden="true" />
-                            <span>Tamper action tag</span>
-                          </button>
-                          <button
-                            type="button"
-                            className="key key--danger key--compact"
-                            disabled={busy || !credential}
-                            onClick={() => void handleAuthorize('stripUp')}
-                          >
-                            <ShieldAlert size={15} aria-hidden="true" />
-                            <span>Strip UP flag</span>
-                          </button>
-                          <button
-                            type="button"
-                            className="key key--danger key--compact"
-                            disabled={busy || !credential}
-                            onClick={() => void handleAuthorize('forgeSig')}
-                          >
-                            <ShieldAlert size={15} aria-hidden="true" />
-                            <span>Flip signature bit</span>
-                          </button>
+                      <>
+                        <div className="step-divider" />
+                        <div className="field-group">
+                          <span className="field-label">
+                            Step 2: Send real adversarial payloads to ThumbSealVault / PasskeyAuth.compact
+                          </span>
+                          <p className="field-hint">
+                            Each button constructs a real malformed assertion and submits it to the compiled Compact 0.36.1 verifier. Expected result: in-circuit assertion failure before proof acceptance.
+                          </p>
+                          <div className="tamper-grid">
+                            <button
+                              type="button"
+                              className="key key--danger key--compact"
+                              disabled={busy || !credential}
+                              onClick={() => void handleAuthorize('replay')}
+                            >
+                              <ShieldAlert size={15} aria-hidden="true" />
+                              <span>Replay spent scope</span>
+                            </button>
+                            <button
+                              type="button"
+                              className="key key--danger key--compact"
+                              disabled={busy || !credential}
+                              onClick={() => void handleAuthorize('phish')}
+                            >
+                              <ShieldAlert size={15} aria-hidden="true" />
+                              <span>Phish origin</span>
+                            </button>
+                            <button
+                              type="button"
+                              className="key key--danger key--compact"
+                              disabled={busy || !credential}
+                              onClick={() => void handleAuthorize('tamperAction')}
+                            >
+                              <ShieldAlert size={15} aria-hidden="true" />
+                              <span>Tamper action tag</span>
+                            </button>
+                            <button
+                              type="button"
+                              className="key key--danger key--compact"
+                              disabled={busy || !credential}
+                              onClick={() => void handleAuthorize('stripUp')}
+                            >
+                              <ShieldAlert size={15} aria-hidden="true" />
+                              <span>Strip UP flag</span>
+                            </button>
+                            <button
+                              type="button"
+                              className="key key--danger key--compact"
+                              disabled={busy || !credential}
+                              onClick={() => void handleAuthorize('forgeSig')}
+                            >
+                              <ShieldAlert size={15} aria-hidden="true" />
+                              <span>Flip signature bit</span>
+                            </button>
+                          </div>
+                          {!credential && (
+                            <p className="field-hint">
+                              Enroll a Virtual P-256 key in Step 1 first to test all 5 attack vectors.
+                            </p>
+                          )}
                         </div>
-                      </div>
+                      </>
                     )}
 
-                    {lastResult && (
-                      <div
-                        className={`result-banner ${
-                          lastResult.ok ? 'result-banner--ok' : 'result-banner--err'
-                        }`}
-                        role="status"
-                      >
-                        <strong>{lastResult.headline}</strong>
-                        <span className="mono-val">{lastResult.detail}</span>
-                        {lastResult.proveMs !== undefined && (
-                          <span className="mono-val">
-                            Halo2 proof: {lastResult.proofBytes} B in {(lastResult.proveMs / 1000).toFixed(2)} s
-                            {lastResult.txId ? ` | Preview tx ${shortHex(lastResult.txId, 10)}` : ''}
+                    <div className="live-status-slot" role="status" aria-live="polite">
+                      {busy ? (
+                        <div className="result-banner">
+                          <strong>
+                            {busyAction === 'register-hw' || busyAction === 'register-virtual'
+                              ? `Generating Halo2 k=15 proof for registerPasskey (${elapsedSec.toFixed(1)}s)`
+                              : busyAction === 'tamper'
+                                ? `Evaluating adversarial payload in PasskeyAuth.compact (${elapsedSec.toFixed(1)}s)`
+                                : `Generating Halo2 ${simulateGrease ? 'k=18' : 'k=17'} proof (${elapsedSec.toFixed(1)}s)`}
+                          </strong>
+                          <span className="mono-msg">
+                            {busyAction === 'authorize'
+                              ? 'Signed locally -> checking witness constraints -> Halo2 ZKIR v3 proof (~28-44s on shared CPU)...'
+                              : 'Running real Compact 0.36.1 circuit against proof-server 9.0.2...'}
                           </span>
-                        )}
-                      </div>
-                    )}
+                        </div>
+                      ) : lastResult ? (
+                        <div
+                          className={`result-banner ${
+                            lastResult.ok
+                              ? 'result-banner--ok'
+                              : lastResult.tamperBlocked
+                                ? 'result-banner--blocked'
+                                : 'result-banner--err'
+                          }`}
+                        >
+                          <strong>{lastResult.headline}</strong>
+                          <span className="mono-msg">{lastResult.detail}</span>
+                          {lastResult.proveMs !== undefined && (
+                            <span className="mono-msg">
+                              Halo2 proof: {lastResult.proofBytes?.toLocaleString('en-US')} B in{' '}
+                              {(lastResult.proveMs / 1000).toFixed(2)} s
+                              {lastResult.txId ? ` | Preview tx ${shortHex(lastResult.txId, 10)}` : ''}
+                            </span>
+                          )}
+                          {lastResult.ok && lastResult.nullifierHex && (
+                            <a href="#boundary" className="result-jump">
+                              <span>Inspect your live zero-leak witness in Proof boundary</span>
+                              <ArrowDown size={14} aria-hidden="true" />
+                            </a>
+                          )}
+                        </div>
+                      ) : null}
+                    </div>
                   </div>
                 </div>
 
@@ -671,60 +991,83 @@ export function App() {
                   <div className="panel-body">
                     <div className="activity-top">
                       <h3>Ledger activity</h3>
-                      <span className="activity-meta">
-                        {health?.vault
-                          ? `${health.vault.registeredCount} keys, ${health.vault.authorizedCount} proofs`
-                          : `${localActivity.length} local runs`}
-                      </span>
+                      <div className="feed-switch" role="group" aria-label="Activity feed scope">
+                        <button
+                          type="button"
+                          className={`feed-pill ${feedView === 'session' ? 'feed-pill--active' : ''}`}
+                          onClick={() => setFeedView('session')}
+                        >
+                          This session ({sessionActivity.length})
+                        </button>
+                        <button
+                          type="button"
+                          className={`feed-pill ${feedView === 'global' ? 'feed-pill--active' : ''}`}
+                          onClick={() => setFeedView('global')}
+                        >
+                          Relayer ({globalActivity.length})
+                        </button>
+                      </div>
                     </div>
+
                     {activityFeed.length === 0 ? (
-                      <p className="activity-meta">
-                        Register a passkey to populate verified circuit proofs and scoped nullifiers.
+                      <p className="activity-empty">
+                        {feedView === 'session'
+                          ? 'Enroll a passkey in Step 1 to generate your own verified Halo2 proof and scoped nullifier here.'
+                          : 'No global relayer runs recorded yet.'}
                       </p>
                     ) : (
                       <div className="activity-list">
-                        {activityFeed.slice(0, 6).map((item) => (
-                          <div className="activity-row" key={item.id}>
-                            <div className="activity-top">
-                              <span className="activity-name">{item.circuit}</span>
-                              <span
-                                className={`activity-meta ${
-                                  item.status === 'reverted'
-                                    ? 'activity-meta--err'
-                                    : 'activity-meta--ok'
-                                }`}
-                              >
-                                {item.status}
-                                {item.proveMs ? ` ${(item.proveMs / 1000).toFixed(1)}s` : ''}
+                        {activityFeed.slice(0, 6).map((item) => {
+                          const isTamper = item.status === 'tamper-blocked';
+                          const isErr = item.status === 'reverted';
+                          return (
+                            <div className="activity-row" key={item.id}>
+                              <div className="activity-top">
+                                <span className="activity-name">
+                                  {item.tamperLabel ? `${item.circuit} (${item.tamperLabel})` : item.circuit}
+                                </span>
+                                <span
+                                  className={`activity-meta ${
+                                    isTamper
+                                      ? 'activity-meta--blocked'
+                                      : isErr
+                                        ? 'activity-meta--err'
+                                        : 'activity-meta--ok'
+                                  }`}
+                                >
+                                  {isTamper ? 'blocked (expected)' : item.status}
+                                  {item.proveMs ? ` ${(item.proveMs / 1000).toFixed(1)}s` : ''}
+                                </span>
+                              </div>
+                              <span className={item.reason ? 'mono-msg' : 'mono-hash'}>
+                                {item.reason
+                                  ? item.reason
+                                  : item.nullifierHex
+                                    ? `nf ${shortHex(item.nullifierHex, 12)}`
+                                    : `commit ${shortHex(item.keyCommitHex, 12)}`}
                               </span>
                             </div>
-                            <span className="mono-val">
-                              {item.reason
-                                ? item.reason
-                                : item.nullifierHex
-                                  ? `nf ${shortHex(item.nullifierHex, 12)}`
-                                  : `commit ${shortHex(item.keyCommitHex, 12)}`}
-                            </span>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
+
                     <div className="spec-rows">
                       <div className="spec-row">
                         <span>Relying party</span>
-                        <span className="mono-val">{rpId}</span>
+                        <span className="mono-msg">{rpId}</span>
                       </div>
                       <div className="spec-row">
                         <span>Registry tree</span>
-                        <span className="mono-val">HistoricMerkleTree&lt;16&gt;</span>
+                        <span className="mono-msg">HistoricMerkleTree&lt;16&gt;</span>
                       </div>
                       <div className="spec-row">
                         <span>Key disclosure</span>
-                        <span className="mono-val">0 bytes on-chain</span>
+                        <span className="mono-msg">0 bytes on-chain</span>
                       </div>
                       <div className="spec-row">
                         <span>Proof engine</span>
-                        <span className="mono-val">ZKIR v3.1 / Ledger 9</span>
+                        <span className="mono-msg">Compact 0.36.1 / ZKIR v3 / Ledger 9</span>
                       </div>
                     </div>
                   </div>
@@ -739,40 +1082,47 @@ export function App() {
             <div className="section-head">
               <h2>What crosses the proof boundary</h2>
               <p className="lead">
-                Compact enforces disclose() taint checks at compile time so public keys, blinding
-                salts, and Merkle paths never reach Midnight ledger state.
+                ThumbSealVault.compact imports PasskeyAuth.compact and enforces compile-time
+                disclose() taint checks so public keys, blinding salts, and Merkle paths never reach
+                Midnight ledger state.
               </p>
             </div>
 
             <div className="graphite-stage">
               <div className="graphite-bar">
-                <span>ThumbSealVault.compact (ZKIR v3.1)</span>
+                <span>ThumbSealVault.compact (Compact 0.36.1 / ZKIR v3)</span>
                 <span>0 identity bytes disclosed on authorizeAction</span>
               </div>
-              <div className="mapping-rows">
+
+              {/* Desktop mathematically row-aligned dual pane */}
+              <div className="mapping-rows mapping-desktop">
                 <div className="mapping-row">
-                  <div className="graphite-pane-title">Private local witness</div>
+                  <div className="graphite-pane-title">Private local witness (never leaves prover)</div>
                   <div className="mapping-cell-bridge" aria-hidden="true" />
-                  <div className="graphite-pane-title">Public Midnight ledger</div>
+                  <div className="graphite-pane-title">Public Midnight ledger state</div>
                 </div>
                 <div className="mapping-row">
                   <div className="kv-line">
                     <span className="kv-key">publicKey.x</span>
-                    <span className="kv-val">
-                      {credential ? shortHex(credential.publicKey.x.toString(16).padStart(64, '0'), 9) : 'device secret'}
+                    <span className="kv-val kv-val--hash">
+                      {credential
+                        ? shortHex(credential.publicKey.x.toString(16).padStart(64, '0'), 10)
+                        : 'device secret'}
                     </span>
                   </div>
                   <div className="mapping-cell-bridge" aria-hidden="true" />
                   <div className="kv-line">
                     <span className="kv-key">rpIdHash</span>
-                    <span className="kv-val">{shortHex(rpIdHashHex, 9)}</span>
+                    <span className="kv-val kv-val--hash">{shortHex(rpIdHashHex, 8)}</span>
                   </div>
                 </div>
                 <div className="mapping-row">
                   <div className="kv-line">
                     <span className="kv-key">publicKey.y</span>
-                    <span className="kv-val">
-                      {credential ? shortHex(credential.publicKey.y.toString(16).padStart(64, '0'), 9) : 'device secret'}
+                    <span className="kv-val kv-val--hash">
+                      {credential
+                        ? shortHex(credential.publicKey.y.toString(16).padStart(64, '0'), 10)
+                        : 'device secret'}
                     </span>
                   </div>
                   <div className="mapping-cell-bridge" aria-hidden="true" />
@@ -784,29 +1134,29 @@ export function App() {
                 <div className="mapping-row">
                   <div className="kv-line">
                     <span className="kv-key">blindingSalt</span>
-                    <span className="kv-val">
-                      {credential ? shortHex(bytesToHex(credential.salt), 9) : '32 B random'}
+                    <span className="kv-val kv-val--hash">
+                      {credential ? shortHex(bytesToHex(credential.salt), 10) : '32 B random'}
                     </span>
                   </div>
                   <div className="mapping-cell-bridge" aria-hidden="true" />
                   <div className="kv-line">
                     <span className="kv-key">registeredCount</span>
-                    <span className="kv-val">{health?.vault?.registeredCount ?? (registeredCommit ? 1 : 0)}</span>
+                    <span className="kv-val num">{health?.vault?.registeredCount ?? 0}</span>
                   </div>
                 </div>
                 <div className="mapping-row">
                   <div className="kv-line">
                     <span className="kv-key">signature (r, s)</span>
-                    <span className="kv-val">
+                    <span className="kv-val kv-val--hash">
                       {lastAssertion
-                        ? shortHex(lastAssertion.signature.r.toString(16).padStart(64, '0'), 9)
+                        ? shortHex(lastAssertion.signature.r.toString(16).padStart(64, '0'), 10)
                         : 'P-256 low-S'}
                     </span>
                   </div>
                   <div className="mapping-cell-bridge" aria-hidden="true" />
                   <div className="kv-line">
                     <span className="kv-key">authorizedCount</span>
-                    <span className="kv-val">{health?.vault?.authorizedCount ?? 0}</span>
+                    <span className="kv-val num">{health?.vault?.authorizedCount ?? 0}</span>
                   </div>
                 </div>
                 <div className="mapping-row">
@@ -814,15 +1164,15 @@ export function App() {
                     <span className="kv-key">merklePath[16]</span>
                     <span className="kv-val">proves historic root</span>
                   </div>
-                  <div className="mapping-cell-bridge" aria-hidden="true">
-                    <div className="mapping-connector" />
+                  <div className="mapping-cell-bridge mapping-cell-bridge--cross" aria-hidden="true">
+                    <span className="bridge-dot" />
                   </div>
                   <div className="kv-line kv-line--crossing">
                     <span className="kv-key">keyTree.checkRoot</span>
-                    <span className="kv-val">
+                    <span className="kv-val kv-val--hash">
                       {health?.vault?.merkleRootField
                         ? shortHex(health.vault.merkleRootField, 9)
-                        : 'HistoricMerkleTree<16>'}
+                        : 'historic root'}
                     </span>
                   </div>
                 </div>
@@ -831,14 +1181,97 @@ export function App() {
                     <span className="kv-key">keyCommit + scopeId</span>
                     <span className="kv-val">hashes to nullifier</span>
                   </div>
-                  <div className="mapping-cell-bridge" aria-hidden="true">
-                    <div className="mapping-connector" />
+                  <div className="mapping-cell-bridge mapping-cell-bridge--cross" aria-hidden="true">
+                    <span className="bridge-dot" />
+                  </div>
+                  <div className="kv-line kv-line--crossing">
+                    <span className="kv-key">usedNullifiers</span>
+                    <span className="kv-val kv-val--hash">
+                      {lastResult?.nullifierHex
+                        ? shortHex(lastResult.nullifierHex, 9)
+                        : 'unlinkable across scopes'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Mobile semantic stacked groups (never interleaves private & public fields!) */}
+              <div className="mapping-mobile">
+                <div className="mapping-group">
+                  <div className="graphite-pane-title">1. Private local witness (never leaves prover)</div>
+                  <div className="kv-line">
+                    <span className="kv-key">publicKey.x</span>
+                    <span className="kv-val">
+                      {credential
+                        ? shortHex(credential.publicKey.x.toString(16).padStart(64, '0'), 8)
+                        : 'device secret'}
+                    </span>
+                  </div>
+                  <div className="kv-line">
+                    <span className="kv-key">publicKey.y</span>
+                    <span className="kv-val">
+                      {credential
+                        ? shortHex(credential.publicKey.y.toString(16).padStart(64, '0'), 8)
+                        : 'device secret'}
+                    </span>
+                  </div>
+                  <div className="kv-line">
+                    <span className="kv-key">blindingSalt</span>
+                    <span className="kv-val">
+                      {credential ? shortHex(bytesToHex(credential.salt), 8) : '32 B random'}
+                    </span>
+                  </div>
+                  <div className="kv-line">
+                    <span className="kv-key">signature (r, s)</span>
+                    <span className="kv-val">
+                      {lastAssertion
+                        ? shortHex(lastAssertion.signature.r.toString(16).padStart(64, '0'), 8)
+                        : 'P-256 low-S'}
+                    </span>
+                  </div>
+                  <div className="kv-line kv-line--crossing">
+                    <span className="kv-key">merklePath[16]</span>
+                    <span className="kv-val">proves historic root</span>
+                  </div>
+                  <div className="kv-line kv-line--crossing">
+                    <span className="kv-key">keyCommit + scopeId</span>
+                    <span className="kv-val">hashes to nullifier</span>
+                  </div>
+                </div>
+
+                <div className="mapping-mobile-wall">
+                  <span>Zero-knowledge proof boundary &mdash; 0 identity bytes disclosed</span>
+                </div>
+
+                <div className="mapping-group">
+                  <div className="graphite-pane-title">2. Public Midnight ledger state</div>
+                  <div className="kv-line">
+                    <span className="kv-key">rpIdHash</span>
+                    <span className="kv-val">{shortHex(rpIdHashHex, 8)}</span>
+                  </div>
+                  <div className="kv-line">
+                    <span className="kv-key">origin</span>
+                    <span className="kv-val">{origin}</span>
+                  </div>
+                  <div className="kv-line">
+                    <span className="kv-key">registeredCount / authorizedCount</span>
+                    <span className="kv-val num">
+                      {health?.vault?.registeredCount ?? 0} / {health?.vault?.authorizedCount ?? 0}
+                    </span>
+                  </div>
+                  <div className="kv-line kv-line--crossing">
+                    <span className="kv-key">keyTree.checkRoot</span>
+                    <span className="kv-val">
+                      {health?.vault?.merkleRootField
+                        ? shortHex(health.vault.merkleRootField, 8)
+                        : 'historic root'}
+                    </span>
                   </div>
                   <div className="kv-line kv-line--crossing">
                     <span className="kv-key">usedNullifiers</span>
                     <span className="kv-val">
                       {lastResult?.nullifierHex
-                        ? shortHex(lastResult.nullifierHex, 9)
+                        ? shortHex(lastResult.nullifierHex, 8)
                         : 'unlinkable across scopes'}
                     </span>
                   </div>
@@ -851,10 +1284,10 @@ export function App() {
         <section id="migration" className="section">
           <div className="container">
             <div className="section-head">
-              <h2>Fifteen lines to drop Lace</h2>
+              <h2>One import to drop Lace</h2>
               <p className="lead">
-                Import PasskeyAuth.compact into any Midnight contract. Here is the real compiling
-                diff on Midnight&apos;s starter counter.
+                Import PasskeyAuth.compact into Midnight&apos;s starter Counter. Highlighted lines
+                add in-circuit secp256r1 verification and replay-safe nullifiers, compiling to k=17.
               </p>
             </div>
 
@@ -868,10 +1301,38 @@ export function App() {
               </div>
               <div className="code-block">
                 <div className="graphite-bar">
-                  <span>After: WalletlessCounter.compact</span>
-                  <span>TouchID or FaceID + DUST relayer</span>
+                  <span>After: WalletlessCounter.compact (k=17)</span>
+                  <button
+                    type="button"
+                    className="code-copy-btn"
+                    onClick={() => void copyText('counter', AFTER_COUNTER_CODE)}
+                  >
+                    {copiedTarget === 'counter' ? (
+                      <>
+                        <Check size={13} aria-hidden="true" />
+                        <span>Copied</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy size={13} aria-hidden="true" />
+                        <span>Copy contract</span>
+                      </>
+                    )}
+                  </button>
                 </div>
-                <pre>{AFTER_COUNTER_CODE}</pre>
+                <pre className="code-diff">
+                  {AFTER_COUNTER_LINES.map((line, i) => (
+                    <span
+                      key={i}
+                      className={line.added ? 'code-line code-line--add' : 'code-line'}
+                    >
+                      <span className="code-gutter" aria-hidden="true">
+                        {line.added ? '+' : ' '}
+                      </span>
+                      {line.text || ' '}
+                    </span>
+                  ))}
+                </pre>
               </div>
             </div>
           </div>
@@ -882,8 +1343,8 @@ export function App() {
             <div className="section-head">
               <h2>Measured across the ecosystem</h2>
               <p className="lead">
-                Every number below comes from reproducible scripts in packages/bench against the
-                AKINDO Wave 1 to 3 corpus ({ecoStats.measuredDate}) and compactc 0.36.1.
+                Reproducible scripts in packages/bench against the AKINDO Wave 1&ndash;3 corpus (
+                {ecoStats.measuredDate}), compactc 0.36.1, and proof-server:9.0.2.
               </p>
             </div>
 
@@ -896,15 +1357,16 @@ export function App() {
                 </span>
               </div>
               <div className="figure-cell">
-                <span className="figure-big">50%</span>
+                <span className="figure-big">1.93&times; &middot; &minus;50%</span>
                 <span className="figure-label">
-                  Prover key reduction (448 MB to 224 MB) via k=18 to k=17 GREASE circuit split
+                  Faster paired proving (median 85.5 s &rarr; 44.2 s) &amp; prover key cut (448 MB
+                  &rarr; 224 MB) via GREASE split
                 </span>
               </div>
               <div className="figure-cell">
                 <span className="figure-big">0 B</span>
                 <span className="figure-label">
-                  Passkey public key, salt, or ECDSA signature bytes disclosed in ledger state
+                  Passkey public key, salt, Merkle path, or ECDSA signature bytes disclosed on-chain
                 </span>
               </div>
             </div>
@@ -913,13 +1375,14 @@ export function App() {
               <table className="data-table">
                 <thead>
                   <tr>
-                    <th>Contract</th>
-                    <th>Circuit</th>
-                    <th>Halo2 size</th>
-                    <th>ZKIR ops</th>
-                    <th>Prover key</th>
-                    <th>Verifier</th>
-                    <th>Notes</th>
+                    <th scope="col">Contract</th>
+                    <th scope="col">Circuit</th>
+                    <th scope="col">Halo2 k</th>
+                    <th scope="col" className="num-col">ZKIR ops</th>
+                    <th scope="col" className="num-col">Prover key</th>
+                    <th scope="col" className="num-col">Verifier</th>
+                    <th scope="col" className="num-col">Single-run prove</th>
+                    <th scope="col">Role &amp; notes</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -931,10 +1394,15 @@ export function App() {
                       <td>{row.contract}</td>
                       <td className="mono-cell">{row.circuit}</td>
                       <td className="mono-cell">{row.kParam}</td>
-                      <td className="mono-cell num">{row.zkirInstructions}</td>
-                      <td className="mono-cell num">{row.proverKeyMB.toFixed(2)} MB</td>
-                      <td className="mono-cell num">{row.verifierKeyBytes} B</td>
-                      <td>{row.proveLabel}</td>
+                      <td className="mono-cell num num-col">
+                        {row.zkirInstructions.toLocaleString('en-US')}
+                      </td>
+                      <td className="mono-cell num num-col">{row.proverKeyMB.toFixed(2)} MB</td>
+                      <td className="mono-cell num num-col">
+                        {row.verifierKeyBytes.toLocaleString('en-US')} B
+                      </td>
+                      <td className="mono-cell num num-col">{row.proveTime}</td>
+                      <td>{row.roleNote}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -949,22 +1417,35 @@ export function App() {
           <div className="footer-headline">
             Keep passkeys in hardware. Keep proofs private.
           </div>
-          <div className="action-strip">
+          <div className="action-strip footer-cta">
             <a href="#playground" className="key key--primary">
-              <Terminal size={16} aria-hidden="true" />
+              <Fingerprint size={17} aria-hidden="true" />
               <span>Run passkey playground</span>
+            </a>
+            <a href={REPO_URL} target="_blank" rel="noreferrer" className="key">
+              <span>Inspect source on GitHub</span>
+              <ExternalLink size={15} aria-hidden="true" />
             </a>
           </div>
           <div className="footer-meta">
             <span>
               ThumbSeal for Midnight Ledger 9 (Compact 0.36.1 / ZKIR v3) under Apache-2.0
-              {health?.vault?.deployTxId ? ` | Preview Vault ${shortHex(health.vault.contractAddress, 10)}` : ''}
+              {health?.vault?.deployTxId && health?.vault?.contractAddress
+                ? ` | Preview Vault ${shortHex(health.vault.contractAddress, 10)}`
+                : ''}
             </span>
             <div className="footer-links">
               <a href="#playground">Playground</a>
               <a href="#boundary">Proof boundary</a>
-              <a href="#migration">Migration</a>
-              <a href="#benchmarks">Benchmarks</a>
+              <a href={`${REPO_URL}/blob/main/packages/contracts/src/PasskeyAuth.compact`} target="_blank" rel="noreferrer">
+                PasskeyAuth.compact
+              </a>
+              <a href={`${REPO_URL}/tree/main/packages/bench`} target="_blank" rel="noreferrer">
+                Benchmarks
+              </a>
+              <a href={`${REPO_URL}/blob/main/SECURITY.md`} target="_blank" rel="noreferrer">
+                Security
+              </a>
             </div>
           </div>
         </div>
