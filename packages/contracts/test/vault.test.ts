@@ -89,6 +89,22 @@ class VaultTestHarness {
     return res.result;
   }
 
+  async authorizeActionGrease(
+    privateState: ThumbSealPrivateState,
+    scopeId: Uint8Array,
+    actionTag: Uint8Array,
+    requireBiometric = false
+  ): Promise<Uint8Array> {
+    const res = await this.contract.circuits.authorizeActionGrease(
+      this.ctx('authorizeActionGrease', privateState),
+      scopeId,
+      actionTag,
+      requireBiometric
+    );
+    this.state.data = res.context.callContext.currentQueryContext.state;
+    return res.result;
+  }
+
   async enrollBackupPasskey(
     privateState: ThumbSealPrivateState,
     scopeId: Uint8Array
@@ -132,11 +148,11 @@ describe('ThumbSealVault (Compact 0.28 / ZKIR v3 native secp256r1)', () => {
     );
     expect(vault.ledger().receipts.member(nf1)).toBe(true);
 
-    // Mode 1: Compact Safari/WebKit without crossOrigin
+    // Second distinct scope produces an unlinkable nullifier
     const scope2 = deriveScopeId('dao:proposal:43');
     const act2 = deriveActionTag('vote:abstain');
     const chal2 = deriveChallenge(DOMAIN_TAGS.ACTION, RP_ID_HASH, scope2, act2);
-    const sig2 = alice.signAssertion({ challenge: chal2, clientDataMode: 1n });
+    const sig2 = alice.signAssertion({ challenge: chal2, clientDataMode: 0n });
     const nf2 = await vault.authorizeAction(
       { credential: alice.credential, pendingAssertion: sig2.witness },
       scope2,
@@ -145,10 +161,10 @@ describe('ThumbSealVault (Compact 0.28 / ZKIR v3 native secp256r1)', () => {
     );
     expect(bytesToHex(nf2)).not.toBe(bytesToHex(nf1));
 
-    // Mode 2: Chromium 20% GREASE ("other_keys_can_be_added_here")
+    // Mode 2: Chromium 20% GREASE ("other_keys_can_be_added_here") routed to authorizeActionGrease
     const chalBob = deriveChallenge(DOMAIN_TAGS.ACTION, RP_ID_HASH, scope1, act1);
     const sigBob = bob.signAssertion({ challenge: chalBob, clientDataMode: 2n });
-    const nfBob = await vault.authorizeAction(
+    const nfBob = await vault.authorizeActionGrease(
       { credential: bob.credential, pendingAssertion: sigBob.witness },
       scope1,
       act1,
@@ -156,6 +172,17 @@ describe('ThumbSealVault (Compact 0.28 / ZKIR v3 native secp256r1)', () => {
     );
     expect(bytesToHex(nfBob)).not.toBe(bytesToHex(nf1));
     expect(vault.ledger().authorizedCount).toBe(3n);
+
+    // Cross-circuit replay check: Bob replaying scope1 on standard authorizeAction MUST revert!
+    const sigBobStd = bob.signAssertion({ challenge: chalBob, clientDataMode: 0n });
+    await expect(
+      vault.authorizeAction(
+        { credential: bob.credential, pendingAssertion: sigBobStd.witness },
+        scope1,
+        act1,
+        true
+      )
+    ).rejects.toThrow(/Nullifier already spent/);
   });
 
   it('supports concurrent registration via HistoricMerkleTree without stale-root reverts', async () => {

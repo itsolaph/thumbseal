@@ -11,8 +11,8 @@ import {
   type Secp256r1Point,
 } from '@midnight-ntwrk/compact-runtime';
 
-export * as ThumbSealVault from './managed/thumbseal-vault/contract/index.js';
-export * as WalletlessCounter from './managed/walletless-counter/contract/index.js';
+export * as ThumbSealVault from '@thumbseal/contracts/vault';
+export * as WalletlessCounter from '@thumbseal/contracts/counter';
 
 const VEC2_BYTES32 = new CompactTypeVector(2, new CompactTypeBytes(32));
 

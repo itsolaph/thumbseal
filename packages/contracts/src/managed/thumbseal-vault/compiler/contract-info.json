@@ -47,6 +47,37 @@
       }
     },
     {
+      "name": "authorizeActionGrease",
+      "pure": false,
+      "proof": true,
+      "arguments": [
+        {
+          "name": "scopeId",
+          "type": {
+            "type-name": "Bytes",
+            "length": 32
+          }
+        },
+        {
+          "name": "actionTag",
+          "type": {
+            "type-name": "Bytes",
+            "length": 32
+          }
+        },
+        {
+          "name": "requireBiometric",
+          "type": {
+            "type-name": "Boolean"
+          }
+        }
+      ],
+      "result-type": {
+        "type-name": "Bytes",
+        "length": 32
+      }
+    },
+    {
       "name": "enrollBackupPasskey",
       "pure": false,
       "proof": true,

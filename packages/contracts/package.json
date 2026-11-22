@@ -4,9 +4,18 @@
   "license": "Apache-2.0",
   "type": "module",
   "exports": {
-    ".": "./dist/index.js",
-    "./vault": "./src/managed/thumbseal-vault/contract/index.js",
-    "./counter": "./src/managed/walletless-counter/contract/index.js"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./vault": {
+      "types": "./src/managed/thumbseal-vault/contract/index.d.ts",
+      "import": "./src/managed/thumbseal-vault/contract/index.js"
+    },
+    "./counter": {
+      "types": "./src/managed/walletless-counter/contract/index.d.ts",
+      "import": "./src/managed/walletless-counter/contract/index.js"
+    }
   },
   "scripts": {
     "compile": "compactc src/ThumbSealVault.compact src/managed/thumbseal-vault && compactc src/examples/WalletlessCounter.compact src/managed/walletless-counter",

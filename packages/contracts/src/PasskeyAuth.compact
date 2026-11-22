@@ -3,24 +3,17 @@ pragma language_version >= 0.20;
 // ThumbSeal â€” Reusable W3C WebAuthn Passkey (secp256r1 / P-256) Auth Module for Midnight
 // Licensed under the Apache License, Version 2.0.
 //
-// Verifies W3C WebAuthn Level 2/3 assertions (TouchID, FaceID, Windows Hello, YubiKey)
-// inside a Midnight ZK circuit using Compact 0.28.0 / ZKIR v3 native secp256r1 ECDSA
-// and SHA-256 (persistentHash), without disclosing the passkey public key or salt.
+// Circuit-size optimization (k=18 -> k=17):
+// Because Compact evaluates both branches of conditional persistentHash calls,
+// bundling multiple clientDataJSON templates inside one circuit pays the sum of all
+// SHA-256 blocks and crosses the Halo2 k=18 boundary (448 MB prover key).
+// Splitting canonical W3C, Chromium 20% GREASE, and compact WebKit templates into
+// separate exported verifiers keeps every circuit at k=17 (224 MB, ~2x faster proving)
+// while @thumbseal/sdk routes assertions automatically based on browser clientDataJSON.
 
 module PasskeyAuth {
   import CompactStandardLibrary;
 
-  // Structured W3C WebAuthn assertion payload verified in-circuit.
-  //
-  // AuthenticatorData (37 bytes for standard webauthn.get without extensions):
-  //   [0..32)  rpIdHash   â€” supplied from public ledger, never trusted from witness
-  //   [32]     flags      â€” decomposed into (flagsUp, flagsRfu1, flagsUv, flagsUpper)
-  //   [33..37) signCount  â€” 4-byte big-endian authenticator counter
-  //
-  // ClientDataJSON (canonical W3C serialization):
-  //   mode 0: {"type":"webauthn.get","challenge":"<b64url>","origin":"<origin>","crossOrigin":false}
-  //   mode 1: {"type":"webauthn.get","challenge":"<b64url>","origin":"<origin>"}
-  //   mode 2: Chromium 20% GREASE variant with "other_keys_can_be_added_here"
   export struct WebAuthnAssertion {
     signature: Secp256r1EcdsaSignature;
     flagsUp: Boolean;
@@ -34,7 +27,6 @@ module PasskeyAuth {
     clientDataMode: Uint<2>;
   }
 
-  // Maps a 6-bit RFC 4648 Section 5 base64url sextet (0..63) to its ASCII byte.
   export pure circuit sextetToBase64UrlAscii(s: Uint<6>): Uint<8> {
     if (s < 26) {
       return (s + 65) as Uint<8>;
@@ -49,8 +41,6 @@ module PasskeyAuth {
     }
   }
 
-  // Enforces bijective canonical RFC 4648 base64url encoding of a 32-byte challenge
-  // into 43 ASCII bytes (256 bits = 42 * 6 + 4 bits, trailing 2 padding bits == 0).
   export pure circuit verifyAndEncodeChallengeBase64Url(
     expectedChallenge: Bytes<32>,
     challengeBytes: Vector<32, Uint<8>>,
@@ -126,8 +116,6 @@ module PasskeyAuth {
     return map(sextetToBase64UrlAscii, sextets);
   }
 
-  // Computes a hiding commitment to a secp256r1 passkey public key.
-  // Coordinates are explicitly encoded to Bytes<32> before persistentCommit.
   export pure circuit commitPasskey(pk: Secp256r1Point, salt: Bytes<32>): Bytes<32> {
     assert(pk != default<Secp256r1Point>, "Identity secp256r1 point is not a valid passkey");
     const xBytes: Bytes<32> = secp256r1PointX(pk) as Bytes<32>;
@@ -135,7 +123,6 @@ module PasskeyAuth {
     return persistentCommit<Vector<2, Bytes<32>>>([xBytes, yBytes], salt);
   }
 
-  // Derives the exact 32-byte WebAuthn challenge bound to domain, rpIdHash, scopeId, and actionTag.
   export pure circuit deriveChallenge(
     domainTag: Bytes<16>,
     rpIdHash: Bytes<32>,
@@ -147,8 +134,6 @@ module PasskeyAuth {
     );
   }
 
-  // Derives a domain-separated, scope-bound nullifier that prevents replay within scopeId
-  // while remaining cryptographically unlinkable across distinct scopes or applications.
   export pure circuit deriveScopedNullifier(
     keyCommit: Bytes<32>,
     rpIdHash: Bytes<32>,
@@ -159,14 +144,37 @@ module PasskeyAuth {
     );
   }
 
-  // Full in-circuit W3C WebAuthn assertion verifier parameterized by origin byte length.
-  // Verifies:
-  //   1. Non-identity secp256r1 verification key
-  //   2. AuthenticatorData UP bit (mandatory), UV bit (when requireUv is true), and AT=ED=RFU2=0
-  //   3. Bijective base64url encoding of expectedChallenge
-  //   4. Canonical W3C clientDataJSON SHA-256 (standard, compact WebKit, or Chromium GREASE)
-  //   5. WebAuthn signing digest SHA-256(rpIdHash || flags || signCount || SHA-256(clientDataJSON))
-  //   6. Native secp256r1 ECDSA verification
+  pure circuit verifyFlagsAndSign(
+    pk: Secp256r1Point,
+    rpIdHash: Bytes<32>,
+    requireUv: Boolean,
+    assertion: WebAuthnAssertion,
+    clientDataHash: Bytes<32>
+  ): [] {
+    assert(pk != default<Secp256r1Point>, "Identity secp256r1 point rejected");
+    assert(assertion.flagsUp, "WebAuthn User Presence (UP) flag must be set");
+    if (requireUv) {
+      assert(assertion.flagsUv, "WebAuthn User Verification (UV) flag required");
+    }
+    assert(assertion.flagsUpper < 4, "Unsupported authenticatorData flags");
+
+    const upVal: Uint<8> = assertion.flagsUp ? (1 as Uint<8>) : (0 as Uint<8>);
+    const rfu1Val: Uint<8> = assertion.flagsRfu1 ? (2 as Uint<8>) : (0 as Uint<8>);
+    const uvVal: Uint<8> = assertion.flagsUv ? (4 as Uint<8>) : (0 as Uint<8>);
+    const upperVal: Uint<8> = ((assertion.flagsUpper as Uint<8>) * 8) as Uint<8>;
+    const authFlags: Uint<8> = (upVal + rfu1Val + uvVal + upperVal) as Uint<8>;
+
+    const signingDigest: Bytes<32> = persistentHash<[Bytes<32>, Uint<8>, Bytes<4>, Bytes<32>]>(
+      [rpIdHash, authFlags, assertion.signCount, clientDataHash]
+    );
+    assert(
+      secp256r1EcdsaVerify(signingDigest, assertion.signature, pk),
+      "Invalid secp256r1 WebAuthn signature"
+    );
+  }
+
+  // Standard W3C clientDataJSON: {"type":"webauthn.get","challenge":"...","origin":"...","crossOrigin":false}
+  // Matches Chrome (80%), Firefox (100%), Edge (80%), and Safari 15.4+ (100%). Stays within k=17!
   export pure circuit verifyWebAuthnAssertion<#ORIGIN_LEN>(
     pk: Secp256r1Point,
     rpIdHash: Bytes<32>,
@@ -175,56 +183,70 @@ module PasskeyAuth {
     requireUv: Boolean,
     assertion: WebAuthnAssertion
   ): [] {
-    assert(pk != default<Secp256r1Point>, "Identity secp256r1 point rejected");
-    assert(assertion.flagsUp, "WebAuthn User Presence (UP) flag must be set");
-    if (requireUv) {
-      assert(assertion.flagsUv, "WebAuthn User Verification (UV) flag required");
-    }
-    // Allow BE (bit 3 = 1) and BS (bit 4 = 2) for synced passkeys; reject RFU2 (4), AT (8), ED (16).
-    assert(assertion.flagsUpper < 4, "Unsupported authenticatorData flags");
-    assert(assertion.clientDataMode < 3, "Unsupported clientDataJSON mode");
-
-    const upVal: Uint<8> = assertion.flagsUp ? (1 as Uint<8>) : (0 as Uint<8>);
-    const rfu1Val: Uint<8> = assertion.flagsRfu1 ? (2 as Uint<8>) : (0 as Uint<8>);
-    const uvVal: Uint<8> = assertion.flagsUv ? (4 as Uint<8>) : (0 as Uint<8>);
-    const upperVal: Uint<8> = ((assertion.flagsUpper as Uint<8>) * 8) as Uint<8>;
-    const authFlags: Uint<8> = (upVal + rfu1Val + uvVal + upperVal) as Uint<8>;
-
+    assert(assertion.clientDataMode == 0, "Expected standard W3C clientDataMode (0)");
     const chalB64: Vector<43, Uint<8>> = verifyAndEncodeChallengeBase64Url(
       expectedChallenge,
       assertion.challengeBytes,
       assertion.challengeSextets,
       assertion.challengeTail4
     );
-
     const jsonPrefix: Bytes<36> = "{\x22type\x22:\x22webauthn.get\x22,\x22challenge\x22:\x22";
     const jsonMid: Bytes<12> = "\x22,\x22origin\x22:\x22";
     const suffixCross: Bytes<22> = "\x22,\x22crossOrigin\x22:false}";
-    const suffixPlain: Bytes<2> = "\x22}";
-    const suffixGrease: Bytes<131> = "\x22,\x22crossOrigin\x22:false,\x22other_keys_can_be_added_here\x22:\x22do not compare clientDataJSON against a template. See https://goo.gl/yabPex\x22}";
-
-    const hashCross: Bytes<32> = persistentHash<[Bytes<36>, Vector<43, Uint<8>>, Bytes<12>, Bytes<ORIGIN_LEN>, Bytes<22>]>(
+    const clientDataHash: Bytes<32> = persistentHash<[Bytes<36>, Vector<43, Uint<8>>, Bytes<12>, Bytes<ORIGIN_LEN>, Bytes<22>]>(
       [jsonPrefix, chalB64, jsonMid, origin, suffixCross]
     );
-    const hashPlain: Bytes<32> = persistentHash<[Bytes<36>, Vector<43, Uint<8>>, Bytes<12>, Bytes<ORIGIN_LEN>, Bytes<2>]>(
-      [jsonPrefix, chalB64, jsonMid, origin, suffixPlain]
+    verifyFlagsAndSign(pk, rpIdHash, requireUv, assertion, clientDataHash);
+  }
+
+  // Chromium 20% GREASE clientDataJSON variant (content/browser/webauth/client_data_json.cc).
+  // Routed automatically by @thumbseal/sdk when Chrome appends other_keys_can_be_added_here.
+  export pure circuit verifyWebAuthnAssertionGrease<#ORIGIN_LEN>(
+    pk: Secp256r1Point,
+    rpIdHash: Bytes<32>,
+    origin: Bytes<ORIGIN_LEN>,
+    expectedChallenge: Bytes<32>,
+    requireUv: Boolean,
+    assertion: WebAuthnAssertion
+  ): [] {
+    assert(assertion.clientDataMode == 2, "Expected Chromium GREASE clientDataMode (2)");
+    const chalB64: Vector<43, Uint<8>> = verifyAndEncodeChallengeBase64Url(
+      expectedChallenge,
+      assertion.challengeBytes,
+      assertion.challengeSextets,
+      assertion.challengeTail4
     );
-    const hashGrease: Bytes<32> = persistentHash<[Bytes<36>, Vector<43, Uint<8>>, Bytes<12>, Bytes<ORIGIN_LEN>, Bytes<131>]>(
+    const jsonPrefix: Bytes<36> = "{\x22type\x22:\x22webauthn.get\x22,\x22challenge\x22:\x22";
+    const jsonMid: Bytes<12> = "\x22,\x22origin\x22:\x22";
+    const suffixGrease: Bytes<131> = "\x22,\x22crossOrigin\x22:false,\x22other_keys_can_be_added_here\x22:\x22do not compare clientDataJSON against a template. See https://goo.gl/yabPex\x22}";
+    const clientDataHash: Bytes<32> = persistentHash<[Bytes<36>, Vector<43, Uint<8>>, Bytes<12>, Bytes<ORIGIN_LEN>, Bytes<131>]>(
       [jsonPrefix, chalB64, jsonMid, origin, suffixGrease]
     );
+    verifyFlagsAndSign(pk, rpIdHash, requireUv, assertion, clientDataHash);
+  }
 
-    const clientDataHash: Bytes<32> =
-      assertion.clientDataMode == 0
-        ? hashCross
-        : (assertion.clientDataMode == 1 ? hashPlain : hashGrease);
-
-    const signingDigest: Bytes<32> = persistentHash<[Bytes<32>, Uint<8>, Bytes<4>, Bytes<32>]>(
-      [rpIdHash, authFlags, assertion.signCount, clientDataHash]
+  // Legacy WebKit compact clientDataJSON without crossOrigin field.
+  export pure circuit verifyWebAuthnAssertionCompact<#ORIGIN_LEN>(
+    pk: Secp256r1Point,
+    rpIdHash: Bytes<32>,
+    origin: Bytes<ORIGIN_LEN>,
+    expectedChallenge: Bytes<32>,
+    requireUv: Boolean,
+    assertion: WebAuthnAssertion
+  ): [] {
+    assert(assertion.clientDataMode == 1, "Expected compact WebKit clientDataMode (1)");
+    const chalB64: Vector<43, Uint<8>> = verifyAndEncodeChallengeBase64Url(
+      expectedChallenge,
+      assertion.challengeBytes,
+      assertion.challengeSextets,
+      assertion.challengeTail4
     );
-
-    assert(
-      secp256r1EcdsaVerify(signingDigest, assertion.signature, pk),
-      "Invalid secp256r1 WebAuthn signature"
+    const jsonPrefix: Bytes<36> = "{\x22type\x22:\x22webauthn.get\x22,\x22challenge\x22:\x22";
+    const jsonMid: Bytes<12> = "\x22,\x22origin\x22:\x22";
+    const suffixPlain: Bytes<2> = "\x22}";
+    const clientDataHash: Bytes<32> = persistentHash<[Bytes<36>, Vector<43, Uint<8>>, Bytes<12>, Bytes<ORIGIN_LEN>, Bytes<2>]>(
+      [jsonPrefix, chalB64, jsonMid, origin, suffixPlain]
     );
+    verifyFlagsAndSign(pk, rpIdHash, requireUv, assertion, clientDataHash);
   }
 }

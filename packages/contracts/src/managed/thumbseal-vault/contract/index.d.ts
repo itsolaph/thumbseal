@@ -32,6 +32,10 @@ export type ImpureCircuits<PS> = {
                   scopeId_0: Uint8Array,
                   actionTag_0: Uint8Array,
                   requireBiometric_0: boolean): Promise<__compactRuntime.CircuitResults<PS, Uint8Array>>;
+  authorizeActionGrease(context: __compactRuntime.CircuitContext<PS>,
+                        scopeId_0: Uint8Array,
+                        actionTag_0: Uint8Array,
+                        requireBiometric_0: boolean): Promise<__compactRuntime.CircuitResults<PS, Uint8Array>>;
   enrollBackupPasskey(context: __compactRuntime.CircuitContext<PS>,
                       scopeId_0: Uint8Array): Promise<__compactRuntime.CircuitResults<PS, Uint8Array>>;
 }
@@ -42,6 +46,10 @@ export type ProvableCircuits<PS> = {
                   scopeId_0: Uint8Array,
                   actionTag_0: Uint8Array,
                   requireBiometric_0: boolean): Promise<__compactRuntime.CircuitResults<PS, Uint8Array>>;
+  authorizeActionGrease(context: __compactRuntime.CircuitContext<PS>,
+                        scopeId_0: Uint8Array,
+                        actionTag_0: Uint8Array,
+                        requireBiometric_0: boolean): Promise<__compactRuntime.CircuitResults<PS, Uint8Array>>;
   enrollBackupPasskey(context: __compactRuntime.CircuitContext<PS>,
                       scopeId_0: Uint8Array): Promise<__compactRuntime.CircuitResults<PS, Uint8Array>>;
 }
@@ -55,6 +63,10 @@ export type Circuits<PS> = {
                   scopeId_0: Uint8Array,
                   actionTag_0: Uint8Array,
                   requireBiometric_0: boolean): Promise<__compactRuntime.CircuitResults<PS, Uint8Array>>;
+  authorizeActionGrease(context: __compactRuntime.CircuitContext<PS>,
+                        scopeId_0: Uint8Array,
+                        actionTag_0: Uint8Array,
+                        requireBiometric_0: boolean): Promise<__compactRuntime.CircuitResults<PS, Uint8Array>>;
   enrollBackupPasskey(context: __compactRuntime.CircuitContext<PS>,
                       scopeId_0: Uint8Array): Promise<__compactRuntime.CircuitResults<PS, Uint8Array>>;
 }

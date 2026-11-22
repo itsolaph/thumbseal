@@ -8,49 +8,59 @@
     "type": "directory",
     "contract-info.json": {
       "type": "file",
-      "size": 7298,
-      "hash": "6ae94e48b153e1c4bc4b3cbc417aff7d549ee92ba489a6246e726d124ab262d6"
+      "size": 7913,
+      "hash": "a295857d2e94b90fc0b3c7ffdc8427f69b1a6f52816ac792a81a9c79def892b7"
     }
   },
   "contract": {
     "type": "directory",
     "index.d.ts": {
       "type": "file",
-      "size": 5616,
-      "hash": "0d1c8446edf811dcbbdcf4efcb7879e51b4d79db692e9015b0af9ec1eebc36d5"
+      "size": 6450,
+      "hash": "a6f21b84e91740311a3e8493c590b95f4efada0388821d0c47de9b8a5ef5d6cf"
     },
     "index.js": {
       "type": "file",
-      "size": 174194,
-      "hash": "b388685429908200242a321239be01451d8b269f0fe670b3d05340d0a5e7d8fc"
+      "size": 195866,
+      "hash": "4a5f6577f98b5289bfe9bdc27afab3d5b395aa5a5c4c22ddaa067776fc7df4e5"
     },
     "index.js.map": {
       "type": "file",
-      "size": 7861,
-      "hash": "d90e23cabbc373a7a26f66c2a4e2ed4fdf46a370930d2bfc5c286adf8ae6b8ab"
+      "size": 8847,
+      "hash": "62c89427341bb270ec8af5598828fd1ddef59175f0d87b93601734de03b5eff6"
     }
   },
   "zkir": {
     "type": "directory",
     "authorizeAction.bzkir": {
       "type": "file",
-      "size": 42743,
-      "hash": "3daebe0467bcf9c5fd1a2912c251a9435a3d7c64baa2336313d1d6654ccc6cb4"
+      "size": 40868,
+      "hash": "dfcc9c18ff3547024e21fe329f385fa6f98eb928ed1663adc180bb3b4cc7d06d"
     },
     "authorizeAction.zkir": {
       "type": "file",
-      "size": 140318,
-      "hash": "63bea3e6643e32df4455196c23e3a86b9de9c6f2db0430d05b5e5901adf1239a"
+      "size": 131644,
+      "hash": "38cd3a010e1f4ef67c6cfd887d6a8db3d123a3e4204c88a640aeeb8bb62912aa"
+    },
+    "authorizeActionGrease.bzkir": {
+      "type": "file",
+      "size": 41107,
+      "hash": "bcef83b695480aa4a52078b38e8cfe0e33cd26a52504d2387249afb4bc4c7bac"
+    },
+    "authorizeActionGrease.zkir": {
+      "type": "file",
+      "size": 131887,
+      "hash": "c73388154fcc76e7afc99b154f3c88f421281de8342a6986db8d8dea59b3065f"
     },
     "enrollBackupPasskey.bzkir": {
       "type": "file",
-      "size": 43805,
-      "hash": "9163fef6e5cb5b0a30c7607752527b598c5dc88cbf0fceea3e8dd997eb5421d4"
+      "size": 42062,
+      "hash": "b3c5a849bdaa4b93a26170cbc3b3d2806f0b5e74c835dae8549f71d1998b7c15"
     },
     "enrollBackupPasskey.zkir": {
       "type": "file",
-      "size": 143845,
-      "hash": "94da87d5b74d8159c7ff42fa7d73d4ba68e7f96422738275c56daadd73aa1878"
+      "size": 135627,
+      "hash": "1129b1bb89742c7e843c03033564167bee2b585fc607494fc5ad5209fb18ac5c"
     },
     "registerPasskey.bzkir": {
       "type": "file",
@@ -67,23 +77,33 @@
     "type": "directory",
     "authorizeAction.prover": {
       "type": "file",
-      "size": 469810461,
-      "hash": "8b54e8ecf0393864fa81bbb04bbf5bb009df3a42aa00b35e51379b4913c20954"
+      "size": 234927562,
+      "hash": "dd53a48163c9976c9676f8fab39f1367cd4fc577ecd5f8a92c71edd052c1885e"
     },
     "authorizeAction.verifier": {
       "type": "file",
       "size": 2745,
-      "hash": "d48ce761c889d3ffc66225308586f96ca2aa562b26164a2917f4961685d317c5"
+      "hash": "e567c7d32327bfa9146c3238408d9f79019e196d6d2612b51b1809341ecc3019"
+    },
+    "authorizeActionGrease.prover": {
+      "type": "file",
+      "size": 469808825,
+      "hash": "225ea88434f073a22ba7a28be777ea71a0d8d3cb7a56c96eb45f046d32fa1514"
+    },
+    "authorizeActionGrease.verifier": {
+      "type": "file",
+      "size": 2745,
+      "hash": "7c4b3a4e5427aae65cd5c1e42dc17ffb739f2f4eaba1a1db4ea99db8234a7dca"
     },
     "enrollBackupPasskey.prover": {
       "type": "file",
-      "size": 469811523,
-      "hash": "8f1a89dd075e2c9e482448885235afa49885ff151be66be7ac5ac1b70f859a66"
+      "size": 469809780,
+      "hash": "3eba4e391256eeea51312d3a773c574d2f4376b505272f0044a7b4624e95fea9"
     },
     "enrollBackupPasskey.verifier": {
       "type": "file",
       "size": 2745,
-      "hash": "195424dbd6e38138675030e25a9e175a7d5e8acb881878a87a38cb8928f25ee9"
+      "hash": "ece252d7e0dd5877689c4f3d81e08a916427c7059c82ac5488ea6c17b893faed"
     },
     "registerPasskey.prover": {
       "type": "file",
