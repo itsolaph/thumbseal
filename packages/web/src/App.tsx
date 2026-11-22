@@ -565,7 +565,7 @@ export function App() {
         </div>
         <nav className="nav-mobile" aria-label="Mobile sections">
           <a href="#playground">Playground</a>
-          <a href="#boundary">Proof boundary</a>
+          <a href="#boundary">Proof</a>
           <a href="#migration">Migration</a>
           <a href="#benchmarks">Benchmarks</a>
           <a href={REPO_URL} target="_blank" rel="noreferrer">
@@ -770,11 +770,11 @@ export function App() {
                         <div className="step-divider" />
                         <div className="field-group">
                           <span className="field-label">
-                            Step 2: Authorize scoped action (anonymous Merkle membership + nullifier)
+                            Step 2: Authorize scoped action
                           </span>
                           <div className="field-row">
                             <label className="field-group">
-                              <span className="field-sublabel">Scope identifier (1 proof per scope)</span>
+                              <span className="field-sublabel">Scope (1 proof each)</span>
                               <input
                                 type="text"
                                 className="input-cut"
@@ -787,7 +787,7 @@ export function App() {
                               />
                             </label>
                             <label className="field-group">
-                              <span className="field-sublabel">Action tag (bound into WebAuthn challenge)</span>
+                              <span className="field-sublabel">Action (bound in challenge)</span>
                               <input
                                 type="text"
                                 className="input-cut"
