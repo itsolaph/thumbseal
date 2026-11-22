@@ -1,0 +1,139 @@
+pragma language_version >= 0.20;
+
+// ThumbSealVault â€” Flagship Walletless Anonymous Passkey Registry & Scoped Action Vault
+// Licensed under the Apache License, Version 2.0.
+//
+// Privacy guarantees (enforced by Compact's static witness-disclosure checker):
+// - Passkey public key (x, y) and blinding salt NEVER leave the client's local prover.
+// - On authorizeAction() and enrollBackupPasskey(), keyCommit is NEVER disclosed:
+//   membership is proven anonymously against HistoricMerkleTree<16, Bytes<32>>.
+// - Nullifiers are domain- and scope-separated: replay within a scope reverts,
+//   while authorizations across different scopes are unlinkable on the public ledger.
+
+import CompactStandardLibrary;
+import "./PasskeyAuth" prefix PA_;
+
+export { PA_WebAuthnAssertion };
+
+export ledger rpIdHash: Bytes<32>;
+export ledger origin: Bytes<27>;
+export ledger defaultRequireUv: Boolean;
+export ledger keyTree: HistoricMerkleTree<16, Bytes<32>>;
+export ledger registeredKeys: Set<Bytes<32>>;
+export ledger usedNullifiers: Set<Bytes<32>>;
+export ledger receipts: Map<Bytes<32>, Bytes<32>>;
+export ledger registeredCount: Counter;
+export ledger authorizedCount: Counter;
+
+witness localPasskeyPub(): Secp256r1Point;
+witness localKeySalt(): Bytes<32>;
+witness localKeyPath(): MerkleTreePath<16, Bytes<32>>;
+witness localWebAuthnAssertion(): PA_WebAuthnAssertion;
+witness localBackupPasskeyPub(): Secp256r1Point;
+witness localBackupKeySalt(): Bytes<32>;
+
+constructor(initRpIdHash: Bytes<32>, initOrigin: Bytes<27>, initRequireUv: Boolean) {
+  rpIdHash = disclose(initRpIdHash);
+  origin = disclose(initOrigin);
+  defaultRequireUv = disclose(initRequireUv);
+}
+
+// Registers a passkey commitment into the anonymous Merkle registry.
+// Only the salted commitment is published; the P-256 public key stays private.
+export circuit registerPasskey(): Bytes<32> {
+  const pk: Secp256r1Point = localPasskeyPub();
+  const salt: Bytes<32> = localKeySalt();
+  const keyCommit: Bytes<32> = PA_commitPasskey(pk, salt);
+  const pubCommit: Bytes<32> = disclose(keyCommit);
+
+  assert(!registeredKeys.member(pubCommit), "Passkey commitment already registered");
+  assert(!keyTree.isFull(), "Passkey registry is full");
+
+  registeredKeys.insert(pubCommit);
+  keyTree.insert(pubCommit);
+  registeredCount.increment(1);
+  return pubCommit;
+}
+
+// Authorizes an application action anonymously using a W3C WebAuthn P-256 assertion.
+// Proves passkey membership in HistoricMerkleTree<16> without disclosing keyCommit or leaf index.
+export circuit authorizeAction(
+  scopeId: Bytes<32>,
+  actionTag: Bytes<32>,
+  requireBiometric: Boolean
+): Bytes<32> {
+  const pk: Secp256r1Point = localPasskeyPub();
+  const salt: Bytes<32> = localKeySalt();
+  const path: MerkleTreePath<16, Bytes<32>> = localKeyPath();
+  const assertion: PA_WebAuthnAssertion = localWebAuthnAssertion();
+
+  const keyCommit: Bytes<32> = PA_commitPasskey(pk, salt);
+  assert(path.leaf == keyCommit, "Merkle leaf does not match local passkey commitment");
+
+  const root: MerkleTreeDigest = merkleTreePathRoot<16, Bytes<32>>(path);
+  assert(keyTree.checkRoot(disclose(root)), "Invalid or unknown passkey registry root");
+
+  const expectedChallenge: Bytes<32> = PA_deriveChallenge(
+    "thumbseal:act:v1",
+    rpIdHash,
+    scopeId,
+    actionTag
+  );
+  const enforceUv: Boolean = defaultRequireUv || requireBiometric;
+  PA_verifyWebAuthnAssertion<27>(pk, rpIdHash, origin, expectedChallenge, enforceUv, assertion);
+
+  const nullifier: Bytes<32> = PA_deriveScopedNullifier(keyCommit, rpIdHash, scopeId);
+  const pubNullifier: Bytes<32> = disclose(nullifier);
+  assert(!usedNullifiers.member(pubNullifier), "Nullifier already spent for this scope");
+
+  const receipt: Bytes<32> = persistentHash<[Bytes<32>, Bytes<32>, Boolean]>(
+    [scopeId, actionTag, enforceUv]
+  );
+
+  usedNullifiers.insert(pubNullifier);
+  receipts.insert(pubNullifier, disclose(receipt));
+  authorizedCount.increment(1);
+  return pubNullifier;
+}
+
+// Enrolls a backup passkey (e.g. second device) authorized anonymously by an existing passkey.
+// Binds the WebAuthn challenge to the new backup passkey commitment without revealing which
+// existing passkey authorized the enrollment.
+export circuit enrollBackupPasskey(scopeId: Bytes<32>): Bytes<32> {
+  const pk: Secp256r1Point = localPasskeyPub();
+  const salt: Bytes<32> = localKeySalt();
+  const path: MerkleTreePath<16, Bytes<32>> = localKeyPath();
+  const assertion: PA_WebAuthnAssertion = localWebAuthnAssertion();
+
+  const backupPk: Secp256r1Point = localBackupPasskeyPub();
+  const backupSalt: Bytes<32> = localBackupKeySalt();
+
+  const keyCommit: Bytes<32> = PA_commitPasskey(pk, salt);
+  assert(path.leaf == keyCommit, "Merkle leaf does not match authorizing passkey");
+
+  const root: MerkleTreeDigest = merkleTreePathRoot<16, Bytes<32>>(path);
+  assert(keyTree.checkRoot(disclose(root)), "Invalid or unknown passkey registry root");
+
+  const backupCommit: Bytes<32> = PA_commitPasskey(backupPk, backupSalt);
+  const pubBackupCommit: Bytes<32> = disclose(backupCommit);
+  assert(!registeredKeys.member(pubBackupCommit), "Backup passkey commitment already registered");
+  assert(!keyTree.isFull(), "Passkey registry is full");
+
+  const expectedChallenge: Bytes<32> = PA_deriveChallenge(
+    "thumbseal:bkp:v1",
+    rpIdHash,
+    scopeId,
+    pubBackupCommit
+  );
+  PA_verifyWebAuthnAssertion<27>(pk, rpIdHash, origin, expectedChallenge, true, assertion);
+
+  const nullifier: Bytes<32> = PA_deriveScopedNullifier(keyCommit, rpIdHash, scopeId);
+  const pubNullifier: Bytes<32> = disclose(nullifier);
+  assert(!usedNullifiers.member(pubNullifier), "Backup enrollment scope already spent");
+
+  usedNullifiers.insert(pubNullifier);
+  registeredKeys.insert(pubBackupCommit);
+  keyTree.insert(pubBackupCommit);
+  registeredCount.increment(1);
+  return pubBackupCommit;
+}

@@ -1,0 +1,230 @@
+pragma language_version >= 0.20;
+
+// ThumbSeal â€” Reusable W3C WebAuthn Passkey (secp256r1 / P-256) Auth Module for Midnight
+// Licensed under the Apache License, Version 2.0.
+//
+// Verifies W3C WebAuthn Level 2/3 assertions (TouchID, FaceID, Windows Hello, YubiKey)
+// inside a Midnight ZK circuit using Compact 0.28.0 / ZKIR v3 native secp256r1 ECDSA
+// and SHA-256 (persistentHash), without disclosing the passkey public key or salt.
+
+module PasskeyAuth {
+  import CompactStandardLibrary;
+
+  // Structured W3C WebAuthn assertion payload verified in-circuit.
+  //
+  // AuthenticatorData (37 bytes for standard webauthn.get without extensions):
+  //   [0..32)  rpIdHash   â€” supplied from public ledger, never trusted from witness
+  //   [32]     flags      â€” decomposed into (flagsUp, flagsRfu1, flagsUv, flagsUpper)
+  //   [33..37) signCount  â€” 4-byte big-endian authenticator counter
+  //
+  // ClientDataJSON (canonical W3C serialization):
+  //   mode 0: {"type":"webauthn.get","challenge":"<b64url>","origin":"<origin>","crossOrigin":false}
+  //   mode 1: {"type":"webauthn.get","challenge":"<b64url>","origin":"<origin>"}
+  //   mode 2: Chromium 20% GREASE variant with "other_keys_can_be_added_here"
+  export struct WebAuthnAssertion {
+    signature: Secp256r1EcdsaSignature;
+    flagsUp: Boolean;
+    flagsRfu1: Boolean;
+    flagsUv: Boolean;
+    flagsUpper: Uint<5>;
+    signCount: Bytes<4>;
+    challengeBytes: Vector<32, Uint<8>>;
+    challengeSextets: Vector<43, Uint<6>>;
+    challengeTail4: Uint<4>;
+    clientDataMode: Uint<2>;
+  }
+
+  // Maps a 6-bit RFC 4648 Section 5 base64url sextet (0..63) to its ASCII byte.
+  export pure circuit sextetToBase64UrlAscii(s: Uint<6>): Uint<8> {
+    if (s < 26) {
+      return (s + 65) as Uint<8>;
+    } else if (s < 52) {
+      return (s + 71) as Uint<8>;
+    } else if (s < 62) {
+      return (s - 4) as Uint<8>;
+    } else if (s == 62) {
+      return 45 as Uint<8>;
+    } else {
+      return 95 as Uint<8>;
+    }
+  }
+
+  // Enforces bijective canonical RFC 4648 base64url encoding of a 32-byte challenge
+  // into 43 ASCII bytes (256 bits = 42 * 6 + 4 bits, trailing 2 padding bits == 0).
+  export pure circuit verifyAndEncodeChallengeBase64Url(
+    expectedChallenge: Bytes<32>,
+    challengeBytes: Vector<32, Uint<8>>,
+    sextets: Vector<43, Uint<6>>,
+    tail4: Uint<4>
+  ): Vector<43, Uint<8>> {
+    assert(
+      (challengeBytes as Bytes<32>) == expectedChallenge,
+      "Challenge witness bytes do not match expected challenge"
+    );
+
+    assert(
+      (challengeBytes[0] as Field) * 65536 + (challengeBytes[1] as Field) * 256 + (challengeBytes[2] as Field)
+      == (sextets[0] as Field) * 262144 + (sextets[1] as Field) * 4096 + (sextets[2] as Field) * 64 + (sextets[3] as Field),
+      "Base64url triplet 0 mismatch"
+    );
+    assert(
+      (challengeBytes[3] as Field) * 65536 + (challengeBytes[4] as Field) * 256 + (challengeBytes[5] as Field)
+      == (sextets[4] as Field) * 262144 + (sextets[5] as Field) * 4096 + (sextets[6] as Field) * 64 + (sextets[7] as Field),
+      "Base64url triplet 1 mismatch"
+    );
+    assert(
+      (challengeBytes[6] as Field) * 65536 + (challengeBytes[7] as Field) * 256 + (challengeBytes[8] as Field)
+      == (sextets[8] as Field) * 262144 + (sextets[9] as Field) * 4096 + (sextets[10] as Field) * 64 + (sextets[11] as Field),
+      "Base64url triplet 2 mismatch"
+    );
+    assert(
+      (challengeBytes[9] as Field) * 65536 + (challengeBytes[10] as Field) * 256 + (challengeBytes[11] as Field)
+      == (sextets[12] as Field) * 262144 + (sextets[13] as Field) * 4096 + (sextets[14] as Field) * 64 + (sextets[15] as Field),
+      "Base64url triplet 3 mismatch"
+    );
+    assert(
+      (challengeBytes[12] as Field) * 65536 + (challengeBytes[13] as Field) * 256 + (challengeBytes[14] as Field)
+      == (sextets[16] as Field) * 262144 + (sextets[17] as Field) * 4096 + (sextets[18] as Field) * 64 + (sextets[19] as Field),
+      "Base64url triplet 4 mismatch"
+    );
+    assert(
+      (challengeBytes[15] as Field) * 65536 + (challengeBytes[16] as Field) * 256 + (challengeBytes[17] as Field)
+      == (sextets[20] as Field) * 262144 + (sextets[21] as Field) * 4096 + (sextets[22] as Field) * 64 + (sextets[23] as Field),
+      "Base64url triplet 5 mismatch"
+    );
+    assert(
+      (challengeBytes[18] as Field) * 65536 + (challengeBytes[19] as Field) * 256 + (challengeBytes[20] as Field)
+      == (sextets[24] as Field) * 262144 + (sextets[25] as Field) * 4096 + (sextets[26] as Field) * 64 + (sextets[27] as Field),
+      "Base64url triplet 6 mismatch"
+    );
+    assert(
+      (challengeBytes[21] as Field) * 65536 + (challengeBytes[22] as Field) * 256 + (challengeBytes[23] as Field)
+      == (sextets[28] as Field) * 262144 + (sextets[29] as Field) * 4096 + (sextets[30] as Field) * 64 + (sextets[31] as Field),
+      "Base64url triplet 7 mismatch"
+    );
+    assert(
+      (challengeBytes[24] as Field) * 65536 + (challengeBytes[25] as Field) * 256 + (challengeBytes[26] as Field)
+      == (sextets[32] as Field) * 262144 + (sextets[33] as Field) * 4096 + (sextets[34] as Field) * 64 + (sextets[35] as Field),
+      "Base64url triplet 8 mismatch"
+    );
+    assert(
+      (challengeBytes[27] as Field) * 65536 + (challengeBytes[28] as Field) * 256 + (challengeBytes[29] as Field)
+      == (sextets[36] as Field) * 262144 + (sextets[37] as Field) * 4096 + (sextets[38] as Field) * 64 + (sextets[39] as Field),
+      "Base64url triplet 9 mismatch"
+    );
+
+    assert(
+      (challengeBytes[30] as Field) * 256 + (challengeBytes[31] as Field)
+      == (sextets[40] as Field) * 1024 + (sextets[41] as Field) * 16 + (tail4 as Field),
+      "Base64url tail mismatch"
+    );
+    assert(
+      sextets[42] == ((tail4 as Uint<6>) * 4) as Uint<6>,
+      "Non-canonical base64url trailing bits"
+    );
+
+    return map(sextetToBase64UrlAscii, sextets);
+  }
+
+  // Computes a hiding commitment to a secp256r1 passkey public key.
+  // Coordinates are explicitly encoded to Bytes<32> before persistentCommit.
+  export pure circuit commitPasskey(pk: Secp256r1Point, salt: Bytes<32>): Bytes<32> {
+    assert(pk != default<Secp256r1Point>, "Identity secp256r1 point is not a valid passkey");
+    const xBytes: Bytes<32> = secp256r1PointX(pk) as Bytes<32>;
+    const yBytes: Bytes<32> = secp256r1PointY(pk) as Bytes<32>;
+    return persistentCommit<Vector<2, Bytes<32>>>([xBytes, yBytes], salt);
+  }
+
+  // Derives the exact 32-byte WebAuthn challenge bound to domain, rpIdHash, scopeId, and actionTag.
+  export pure circuit deriveChallenge(
+    domainTag: Bytes<16>,
+    rpIdHash: Bytes<32>,
+    scopeId: Bytes<32>,
+    actionTag: Bytes<32>
+  ): Bytes<32> {
+    return persistentHash<[Bytes<16>, Bytes<32>, Bytes<32>, Bytes<32>]>(
+      [domainTag, rpIdHash, scopeId, actionTag]
+    );
+  }
+
+  // Derives a domain-separated, scope-bound nullifier that prevents replay within scopeId
+  // while remaining cryptographically unlinkable across distinct scopes or applications.
+  export pure circuit deriveScopedNullifier(
+    keyCommit: Bytes<32>,
+    rpIdHash: Bytes<32>,
+    scopeId: Bytes<32>
+  ): Bytes<32> {
+    return persistentHash<[Bytes<16>, Bytes<32>, Bytes<32>, Bytes<32>]>(
+      ["thumbseal:nf:v1\x00", keyCommit, rpIdHash, scopeId]
+    );
+  }
+
+  // Full in-circuit W3C WebAuthn assertion verifier parameterized by origin byte length.
+  // Verifies:
+  //   1. Non-identity secp256r1 verification key
+  //   2. AuthenticatorData UP bit (mandatory), UV bit (when requireUv is true), and AT=ED=RFU2=0
+  //   3. Bijective base64url encoding of expectedChallenge
+  //   4. Canonical W3C clientDataJSON SHA-256 (standard, compact WebKit, or Chromium GREASE)
+  //   5. WebAuthn signing digest SHA-256(rpIdHash || flags || signCount || SHA-256(clientDataJSON))
+  //   6. Native secp256r1 ECDSA verification
+  export pure circuit verifyWebAuthnAssertion<#ORIGIN_LEN>(
+    pk: Secp256r1Point,
+    rpIdHash: Bytes<32>,
+    origin: Bytes<ORIGIN_LEN>,
+    expectedChallenge: Bytes<32>,
+    requireUv: Boolean,
+    assertion: WebAuthnAssertion
+  ): [] {
+    assert(pk != default<Secp256r1Point>, "Identity secp256r1 point rejected");
+    assert(assertion.flagsUp, "WebAuthn User Presence (UP) flag must be set");
+    if (requireUv) {
+      assert(assertion.flagsUv, "WebAuthn User Verification (UV) flag required");
+    }
+    // Allow BE (bit 3 = 1) and BS (bit 4 = 2) for synced passkeys; reject RFU2 (4), AT (8), ED (16).
+    assert(assertion.flagsUpper < 4, "Unsupported authenticatorData flags");
+    assert(assertion.clientDataMode < 3, "Unsupported clientDataJSON mode");
+
+    const upVal: Uint<8> = assertion.flagsUp ? (1 as Uint<8>) : (0 as Uint<8>);
+    const rfu1Val: Uint<8> = assertion.flagsRfu1 ? (2 as Uint<8>) : (0 as Uint<8>);
+    const uvVal: Uint<8> = assertion.flagsUv ? (4 as Uint<8>) : (0 as Uint<8>);
+    const upperVal: Uint<8> = ((assertion.flagsUpper as Uint<8>) * 8) as Uint<8>;
+    const authFlags: Uint<8> = (upVal + rfu1Val + uvVal + upperVal) as Uint<8>;
+
+    const chalB64: Vector<43, Uint<8>> = verifyAndEncodeChallengeBase64Url(
+      expectedChallenge,
+      assertion.challengeBytes,
+      assertion.challengeSextets,
+      assertion.challengeTail4
+    );
+
+    const jsonPrefix: Bytes<36> = "{\x22type\x22:\x22webauthn.get\x22,\x22challenge\x22:\x22";
+    const jsonMid: Bytes<12> = "\x22,\x22origin\x22:\x22";
+    const suffixCross: Bytes<22> = "\x22,\x22crossOrigin\x22:false}";
+    const suffixPlain: Bytes<2> = "\x22}";
+    const suffixGrease: Bytes<131> = "\x22,\x22crossOrigin\x22:false,\x22other_keys_can_be_added_here\x22:\x22do not compare clientDataJSON against a template. See https://goo.gl/yabPex\x22}";
+
+    const hashCross: Bytes<32> = persistentHash<[Bytes<36>, Vector<43, Uint<8>>, Bytes<12>, Bytes<ORIGIN_LEN>, Bytes<22>]>(
+      [jsonPrefix, chalB64, jsonMid, origin, suffixCross]
+    );
+    const hashPlain: Bytes<32> = persistentHash<[Bytes<36>, Vector<43, Uint<8>>, Bytes<12>, Bytes<ORIGIN_LEN>, Bytes<2>]>(
+      [jsonPrefix, chalB64, jsonMid, origin, suffixPlain]
+    );
+    const hashGrease: Bytes<32> = persistentHash<[Bytes<36>, Vector<43, Uint<8>>, Bytes<12>, Bytes<ORIGIN_LEN>, Bytes<131>]>(
+      [jsonPrefix, chalB64, jsonMid, origin, suffixGrease]
+    );
+
+    const clientDataHash: Bytes<32> =
+      assertion.clientDataMode == 0
+        ? hashCross
+        : (assertion.clientDataMode == 1 ? hashPlain : hashGrease);
+
+    const signingDigest: Bytes<32> = persistentHash<[Bytes<32>, Uint<8>, Bytes<4>, Bytes<32>]>(
+      [rpIdHash, authFlags, assertion.signCount, clientDataHash]
+    );
+
+    assert(
+      secp256r1EcdsaVerify(signingDigest, assertion.signature, pk),
+      "Invalid secp256r1 WebAuthn signature"
+    );
+  }
+}

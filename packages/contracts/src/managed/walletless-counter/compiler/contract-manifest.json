@@ -1,0 +1,59 @@
+{
+  "manifest-version": "1",
+  "compiler-version": "0.36.1",
+  "compiler-commit": "7fa3a117c5e7efe9d2c51da04263e5f0b3509144",
+  "language-version": "0.28.0",
+  "runtime-version": "0.21.0",
+  "compiler": {
+    "type": "directory",
+    "contract-info.json": {
+      "type": "file",
+      "size": 4053,
+      "hash": "91f02d1aa3f7c3768b606d8713905abba938c44c6b463a88e4cdb6f2bff96260"
+    }
+  },
+  "contract": {
+    "type": "directory",
+    "index.d.ts": {
+      "type": "file",
+      "size": 2754,
+      "hash": "faf229feac92cce07270ff11e5f6ad2df646a4f7b3975fb71c83036b64e24b65"
+    },
+    "index.js": {
+      "type": "file",
+      "size": 86856,
+      "hash": "e35d6aff6873d0d69d4e048cfee0455387151eca2528a5dc202d564638fef26a"
+    },
+    "index.js.map": {
+      "type": "file",
+      "size": 5077,
+      "hash": "d4a5299e3c20f930accd92c83f42767ded9a0dd33dfbbc942162048abbb3f19d"
+    }
+  },
+  "zkir": {
+    "type": "directory",
+    "increment.bzkir": {
+      "type": "file",
+      "size": 38364,
+      "hash": "21e37de2a12ee2c6777ebbac8dc74aa8f357dd6739828d5a0b78263906570b02"
+    },
+    "increment.zkir": {
+      "type": "file",
+      "size": 127846,
+      "hash": "acf6669b8e09a0eab8fdeab4758115ae354a2e12e6aad63abac9c5abfc4da0cf"
+    }
+  },
+  "keys": {
+    "type": "directory",
+    "increment.prover": {
+      "type": "file",
+      "size": 469806082,
+      "hash": "ec934dce9daeba0141b459481c5bd738ab97f9a5a8f516b813b5e12cd7401241"
+    },
+    "increment.verifier": {
+      "type": "file",
+      "size": 2745,
+      "hash": "784b8258babf952ef88a4da488c0afa4d3a1ec4e44e4a0b2dcc2fddc77bf239d"
+    }
+  }
+}

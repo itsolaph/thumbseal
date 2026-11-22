@@ -1,0 +1,196 @@
+{
+  "compiler-version": "0.36.1",
+  "compiler-commit": "7fa3a117c5e7efe9d2c51da04263e5f0b3509144",
+  "language-version": "0.28.0",
+  "runtime-version": "0.21.0",
+  "circuits": [
+    {
+      "name": "increment",
+      "pure": false,
+      "proof": true,
+      "arguments": [
+        {
+          "name": "scopeId",
+          "type": {
+            "type-name": "Bytes",
+            "length": 32
+          }
+        }
+      ],
+      "result-type": {
+        "type-name": "Tuple",
+        "types": [
+        ]
+      }
+    }
+  ],
+  "witnesses": [
+    {
+      "name": "localPasskeyPub",
+      "arguments": [
+      ],
+      "result type": {
+        "type-name": "Secp256r1Point"
+      }
+    },
+    {
+      "name": "localKeySalt",
+      "arguments": [
+      ],
+      "result type": {
+        "type-name": "Bytes",
+        "length": 32
+      }
+    },
+    {
+      "name": "localWebAuthnAssertion",
+      "arguments": [
+      ],
+      "result type": {
+        "type-name": "Struct",
+        "name": "WebAuthnAssertion",
+        "elements": [
+          {
+            "name": "signature",
+            "type": {
+              "type-name": "Struct",
+              "name": "Secp256r1EcdsaSignature",
+              "elements": [
+                {
+                  "name": "r",
+                  "type": {
+                    "type-name": "Secp256r1Scalar"
+                  }
+                },
+                {
+                  "name": "s",
+                  "type": {
+                    "type-name": "Secp256r1Scalar"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "name": "flagsUp",
+            "type": {
+              "type-name": "Boolean"
+            }
+          },
+          {
+            "name": "flagsRfu1",
+            "type": {
+              "type-name": "Boolean"
+            }
+          },
+          {
+            "name": "flagsUv",
+            "type": {
+              "type-name": "Boolean"
+            }
+          },
+          {
+            "name": "flagsUpper",
+            "type": {
+              "type-name": "Uint",
+              "maxval": 31
+            }
+          },
+          {
+            "name": "signCount",
+            "type": {
+              "type-name": "Bytes",
+              "length": 4
+            }
+          },
+          {
+            "name": "challengeBytes",
+            "type": {
+              "type-name": "Vector",
+              "length": 32,
+              "type": {
+                "type-name": "Uint",
+                "maxval": 255
+              }
+            }
+          },
+          {
+            "name": "challengeSextets",
+            "type": {
+              "type-name": "Vector",
+              "length": 43,
+              "type": {
+                "type-name": "Uint",
+                "maxval": 63
+              }
+            }
+          },
+          {
+            "name": "challengeTail4",
+            "type": {
+              "type-name": "Uint",
+              "maxval": 15
+            }
+          },
+          {
+            "name": "clientDataMode",
+            "type": {
+              "type-name": "Uint",
+              "maxval": 3
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "contracts": [
+  ],
+  "ledger": [
+    {
+      "name": "rpIdHash",
+      "index": 0,
+      "exported": true,
+      "storage": "Cell",
+      "type": {
+        "type-name": "Bytes",
+        "length": 32
+      }
+    },
+    {
+      "name": "origin",
+      "index": 1,
+      "exported": true,
+      "storage": "Cell",
+      "type": {
+        "type-name": "Bytes",
+        "length": 27
+      }
+    },
+    {
+      "name": "ownerCommit",
+      "index": 2,
+      "exported": true,
+      "storage": "Cell",
+      "type": {
+        "type-name": "Bytes",
+        "length": 32
+      }
+    },
+    {
+      "name": "round",
+      "index": 3,
+      "exported": true,
+      "storage": "Counter"
+    },
+    {
+      "name": "usedNonces",
+      "index": 4,
+      "exported": true,
+      "storage": "Set",
+      "type": {
+        "type-name": "Bytes",
+        "length": 32
+      }
+    }
+  ]
+}

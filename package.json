@@ -1,0 +1,22 @@
+{
+  "name": "thumbseal-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "workspaces": [
+    "packages/contracts",
+    "packages/sdk",
+    "packages/relayer",
+    "packages/web",
+    "packages/bench"
+  ],
+  "scripts": {
+    "compile:contracts": "npm --workspace @thumbseal/contracts run compile",
+    "test": "npm --workspace @thumbseal/contracts run test && npm --workspace @thumbseal/sdk run test",
+    "build": "npm --workspace @thumbseal/contracts run build && npm --workspace @thumbseal/sdk run build && npm --workspace @thumbseal/relayer run build && npm --workspace @thumbseal/web run build"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}

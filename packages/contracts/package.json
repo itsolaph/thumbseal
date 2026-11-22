@@ -1,0 +1,27 @@
+{
+  "name": "@thumbseal/contracts",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": "./dist/index.js",
+    "./vault": "./src/managed/thumbseal-vault/contract/index.js",
+    "./counter": "./src/managed/walletless-counter/contract/index.js"
+  },
+  "scripts": {
+    "compile": "compactc src/ThumbSealVault.compact src/managed/thumbseal-vault && compactc src/examples/WalletlessCounter.compact src/managed/walletless-counter",
+    "compile:fast": "compactc --skip-zk src/ThumbSealVault.compact src/managed/thumbseal-vault && compactc --skip-zk src/examples/WalletlessCounter.compact src/managed/walletless-counter",
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@midnight-ntwrk/compact-runtime": "0.21.0"
+  },
+  "devDependencies": {
+    "@noble/curves": "^2.2.0",
+    "@noble/hashes": "^2.0.1",
+    "typescript": "^5.8.3",
+    "vitest": "^3.1.1",
+    "@thumbseal/sdk": "*"
+  }
+}

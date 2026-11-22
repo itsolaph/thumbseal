@@ -1,0 +1,99 @@
+{
+  "manifest-version": "1",
+  "compiler-version": "0.36.1",
+  "compiler-commit": "7fa3a117c5e7efe9d2c51da04263e5f0b3509144",
+  "language-version": "0.28.0",
+  "runtime-version": "0.21.0",
+  "compiler": {
+    "type": "directory",
+    "contract-info.json": {
+      "type": "file",
+      "size": 7298,
+      "hash": "6ae94e48b153e1c4bc4b3cbc417aff7d549ee92ba489a6246e726d124ab262d6"
+    }
+  },
+  "contract": {
+    "type": "directory",
+    "index.d.ts": {
+      "type": "file",
+      "size": 5616,
+      "hash": "0d1c8446edf811dcbbdcf4efcb7879e51b4d79db692e9015b0af9ec1eebc36d5"
+    },
+    "index.js": {
+      "type": "file",
+      "size": 174194,
+      "hash": "b388685429908200242a321239be01451d8b269f0fe670b3d05340d0a5e7d8fc"
+    },
+    "index.js.map": {
+      "type": "file",
+      "size": 7861,
+      "hash": "d90e23cabbc373a7a26f66c2a4e2ed4fdf46a370930d2bfc5c286adf8ae6b8ab"
+    }
+  },
+  "zkir": {
+    "type": "directory",
+    "authorizeAction.bzkir": {
+      "type": "file",
+      "size": 42743,
+      "hash": "3daebe0467bcf9c5fd1a2912c251a9435a3d7c64baa2336313d1d6654ccc6cb4"
+    },
+    "authorizeAction.zkir": {
+      "type": "file",
+      "size": 140318,
+      "hash": "63bea3e6643e32df4455196c23e3a86b9de9c6f2db0430d05b5e5901adf1239a"
+    },
+    "enrollBackupPasskey.bzkir": {
+      "type": "file",
+      "size": 43805,
+      "hash": "9163fef6e5cb5b0a30c7607752527b598c5dc88cbf0fceea3e8dd997eb5421d4"
+    },
+    "enrollBackupPasskey.zkir": {
+      "type": "file",
+      "size": 143845,
+      "hash": "94da87d5b74d8159c7ff42fa7d73d4ba68e7f96422738275c56daadd73aa1878"
+    },
+    "registerPasskey.bzkir": {
+      "type": "file",
+      "size": 1610,
+      "hash": "2ddd231a2846859e93c26eb726259fc82f3b933087ee86e826f829255f7ea811"
+    },
+    "registerPasskey.zkir": {
+      "type": "file",
+      "size": 5655,
+      "hash": "bf2f873137f2080ceff30629ed931e1c9d7eeb40936c3662dda4345b5460bbe4"
+    }
+  },
+  "keys": {
+    "type": "directory",
+    "authorizeAction.prover": {
+      "type": "file",
+      "size": 469810461,
+      "hash": "8b54e8ecf0393864fa81bbb04bbf5bb009df3a42aa00b35e51379b4913c20954"
+    },
+    "authorizeAction.verifier": {
+      "type": "file",
+      "size": 2745,
+      "hash": "d48ce761c889d3ffc66225308586f96ca2aa562b26164a2917f4961685d317c5"
+    },
+    "enrollBackupPasskey.prover": {
+      "type": "file",
+      "size": 469811523,
+      "hash": "8f1a89dd075e2c9e482448885235afa49885ff151be66be7ac5ac1b70f859a66"
+    },
+    "enrollBackupPasskey.verifier": {
+      "type": "file",
+      "size": 2745,
+      "hash": "195424dbd6e38138675030e25a9e175a7d5e8acb881878a87a38cb8928f25ee9"
+    },
+    "registerPasskey.prover": {
+      "type": "file",
+      "size": 58727534,
+      "hash": "c6b929e3b08832f9ad428c5885058265587110343fb22a038b53fdf5139bc780"
+    },
+    "registerPasskey.verifier": {
+      "type": "file",
+      "size": 2745,
+      "hash": "6c65d40448691e956fcf2fad959ce0ba9dbb39b76bfbdb19bf1f47a211ddc6ae"
+    }
+  }
+}

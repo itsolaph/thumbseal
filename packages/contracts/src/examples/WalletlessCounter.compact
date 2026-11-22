@@ -1,0 +1,49 @@
+pragma language_version >= 0.20;
+
+// WalletlessCounter â€” Minimal Before/After Migration Example
+// Demonstrates turning Midnight's starter Counter contract into a walletless,
+// passkey-authorized dApp by importing PasskeyAuth (~15 lines added).
+// Licensed under the Apache License, Version 2.0.
+
+import CompactStandardLibrary;
+import "../PasskeyAuth" prefix PA_;
+
+export { PA_WebAuthnAssertion };
+
+export ledger rpIdHash: Bytes<32>;
+export ledger origin: Bytes<27>;
+export ledger ownerCommit: Bytes<32>;
+export ledger round: Counter;
+export ledger usedNonces: Set<Bytes<32>>;
+
+witness localPasskeyPub(): Secp256r1Point;
+witness localKeySalt(): Bytes<32>;
+witness localWebAuthnAssertion(): PA_WebAuthnAssertion;
+
+constructor(initRpIdHash: Bytes<32>, initOrigin: Bytes<27>, initOwnerCommit: Bytes<32>) {
+  rpIdHash = disclose(initRpIdHash);
+  origin = disclose(initOrigin);
+  ownerCommit = disclose(initOwnerCommit);
+}
+
+export circuit increment(scopeId: Bytes<32>): [] {
+  const pk: Secp256r1Point = localPasskeyPub();
+  const salt: Bytes<32> = localKeySalt();
+  const assertion: PA_WebAuthnAssertion = localWebAuthnAssertion();
+
+  assert(PA_commitPasskey(pk, salt) == ownerCommit, "Passkey does not match counter owner");
+  const challenge: Bytes<32> = PA_deriveChallenge(
+    "thumbseal:cnt:v1",
+    rpIdHash,
+    scopeId,
+    pad(32, "increment")
+  );
+  PA_verifyWebAuthnAssertion<27>(pk, rpIdHash, origin, challenge, false, assertion);
+
+  const nf: Bytes<32> = PA_deriveScopedNullifier(ownerCommit, rpIdHash, scopeId);
+  const pubNf: Bytes<32> = disclose(nf);
+  assert(!usedNonces.member(pubNf), "Increment scope already used");
+
+  usedNonces.insert(pubNf);
+  round.increment(1);
+}
